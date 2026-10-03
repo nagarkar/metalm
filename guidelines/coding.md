@@ -222,13 +222,13 @@ Whenever a setting, flag, pin, or configuration value is mentioned in anything w
 - Typed decisions (classify, rank, verify) prefer a calibrated typed-judgment model over prompt-and-parse; it judges, never writes; one narrow question per call. An uncalibrated stand-in may flag but never act. Prose stays on the LLM client.
 
 ### Typed decisions (Jev)
-- One file per decision: `<pkg>/questions/<decision>_v<N>.json` holds each question (type, instructions, criteria) and, beside it, its `bars` (one per action: `{"archive": 0.98}`). Bars are stripped before sending. Wording changes → new version file, never edited in place; its bars start `"bars_status": "uncalibrated"` and every decision from it goes to a person until re-tuned. Retuning bars on unchanged wording: edit in place, dated line in `bars_changes`.
-- One batched call per state: all independent questions together (they run in parallel); a second call only when an answer decides the next question or evidence. Wrap the result in a frozen dataclass (no I/O); a function makes the call; the adapter retries only 429/529.
-- Questions carry full meaning (ids are never sent): Choice options described and a `none_of_these`; every Score level a concrete, self-standing situation; state as named JSON fields referenced by backticked path.
-- Gate every answer type: Noul acts only at `p ≥ bar` (yes) or `p ≤ 1 − bar` (no), 0.5 = undecided; Choice and Score on `confidence`. For "at least level k" sum the level probabilities (`P(level ≥ k) ≥ bar`); never threshold the weighted `score`, which lands between levels.
-- Bars scale with the action's cost (archive 0.98, route 0.6) and are set on labeled examples from the repo's own data, never guessed (live 2026-10-03: a vague ticket routed at 0.61 over a placeholder 0.60).
-- Not sure, or `none_of_these` → a person. Never fall back to an LLM.
-- Log raw answers with a hash of the wording sent, so bars re-tune without new calls and caches survive bar edits.
+Tested reference: `examples/jev-decision/`.
+- One file per decision, `questions/<decision>_v<N>.json`: each question with its `bars` (per action). Bars are not sent. New wording → new version, bars `uncalibrated` → all to a person until re-tuned. Re-tuning: edit in place, dated `bars_changes` line.
+- One batched call per state; result is a frozen dataclass; retry only 429/529.
+- Full meaning in every question (ids are not sent); Choice has `none_of_these`; each Score level a concrete situation.
+- Gate every answer: Noul `p ≥ bar` / `p ≤ 1 − bar`; Choice and Score on `confidence`; "level ≥ k" as `P(level ≥ k) ≥ bar`, never the weighted `score`.
+- Bars per action cost, set on labeled data. Answers near a bar vary between runs (0.61, then 0.52, same ticket, 2026-10-03).
+- Not sure or `none_of_these` → a person, never an LLM. Log raw answers with a wording hash.
 - One house client (port + LiteLLM adapter): vendor = model-string prefix; keys per vendor in `.env`; scripted transport for offline tests. Never name a model in code; each purpose is a config section naming its model; section absent = purpose off; no key = `NotConfigured` on the board.
 - `MODEL_PROFILES` table: verified contracts listing accepted params per model, one row per model, no family globs; unknown model gets the plain request; requests shaped before sending. No general params passthrough.
 - Record/replay cache: reply keyed by sha256 of (model + params + messages), or by role, provider, model, prompt version and exact input. Consult cache before vendor; identical payloads never bill twice; only an explicit regenerate bypasses it. Same cache serves replay tests. Parsers stay backward compatible with cached older replies.

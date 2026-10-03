@@ -73,7 +73,8 @@ Decide in this order:
 Every launchd job script (example: tradelm `scripts/nightly.sh`):
 - **Holds the Mac awake while it runs:** re-execs itself under `caffeinate -i -s` once (guard with an env var), so a short sleep timer cannot stop it halfway.
 - **Is woken for:** a sleeping Mac does not run it on time (launchd fires it on wake, late). The owner sets a wake a few minutes before (`sudo pmset repeat wakeorpoweron MTWRFSU <HH:MM:SS>`); Claude Code leaves system settings alone and prints the command.
-- **Alerts on failure only:** each step goes through a `step` helper that logs its exit code and records a failure; an `EXIT` trap sends one macOS notification naming the failed steps, and names "the run itself" when the run was cut short. A clean run is silent (an alert every night is ignored). The notifier path is overridable by env var so tests can stub it.
+- **Alerts on failure only:** each step goes through a `step` helper that logs its exit code and records a failure; an `EXIT` trap sends one notification naming the failed steps, and names "the run itself" when the run was cut short. A clean run is silent (an alert every night is ignored). The notifier path is overridable by env var so tests can stub it.
+- **Alerts through SuperLM:** every *lm repo notifies with `superlm-notify --repo <repo> [--title <what>] --body <message>` (metalm `bin/`, linked into `~/.local/bin` by `install.sh`; it launches the SuperLM notifier app built from `tools/notifier/`). One app, one icon, one permission for all repos; the banner's title names the repo. No fallback notifier: a banner that cannot be shown is logged with the reason. Call it by full path from launchd jobs (their PATH lacks `~/.local/bin`). `doctor` checks it is installed and built. (Ruled 2026-10-03.)
 - **Treats "not configured" as a skip, not a failure:** a step whose setup is missing on this machine (e.g. a Sheets token) logs `skipped: …` and exits 0, so it never trips the alert.
 - **Cannot report a run that never started:** the app's page shows "last successful run" from the run rows; that is the check for a missed night.
 - **Checks its machine setup first:** the repo's `doctor` verb checks every owner-run step no code installs (its launch agents loaded, a daily wake 1–30 min before each launchd job's plist hour, the real server answering, `tailscale serve` fronting its port) and prints the fixing command for each miss; exit 1 on any fail. The job runs `doctor` as its first step, so a missing piece reaches that night's failure notification. Read the job's hour from its plist, never a second copy of it. (tradelm `tradelm doctor`; others proposed, does not exist yet.)
@@ -94,7 +95,8 @@ Go down the list for the job's type whenever a scheduled job is created or chang
 - [ ] Tested against stub commands (clean run silent, failures named, killed run reported).
 - [ ] **(owner)** Install and load the plist: `cp scripts/<label>.plist ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist`.
 - [ ] **(owner)** Daily wake 1–30 min before the job: `sudo pmset repeat wakeorpoweron MTWRFSU <HH:MM:SS>`.
-- [ ] **(owner)** Notifications allowed for Script Editor (System Settings → Notifications); confirm with a test banner.
+- [ ] Alerts through `superlm-notify --repo <repo>` by full path (`~/.local/bin/superlm-notify`), stubbed by env var in tests.
+- [ ] **(owner)** metalm's `install.sh` run; notifications allowed for SuperLM (System Settings → Notifications → SuperLM); confirm with a test banner.
 - [ ] After the first scheduled night: read its log and run row, and run `doctor`.
 
 **Local scheduled task** (a Claude run on this Mac, Claude desktop)

@@ -136,6 +136,7 @@ Write one per area at `docs/test-plan.md` (or `docs/<area>-test-plan.md`).
 | lint/format | `ruff check` / `ruff format` | eslint + prettier (or biome) | `clippy -D warnings` / rustfmt |
 | types | pyright or mypy, public API typed | TS strict, no `any` in public API | compiler |
 | fakes | fake behind adapter interface, no cassette lib | same | trait-based fake |
+| data objects (coding.md#data-objects) | `@dataclass(frozen=True, slots=True)`; JSON Schema at edges | `readonly` types/interfaces; `zod` at edges | structs `#[derive(Clone, Debug, PartialEq)]`; `serde` at edges |
 
 - Run tools from the repo's own environment (e.g. `.venv/bin/pytest`, `.venv/bin/ruff check src tests`); the exact commands live in the repo's `CLAUDE.md`; otherwise find them (README, CI, manifests), never configure them by hand.
 - A fixture shared across languages (one directory, asserted by both suites) pins cross-language agreement.

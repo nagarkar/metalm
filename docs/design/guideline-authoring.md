@@ -35,3 +35,4 @@ Status: DRAFT — not yet ratified by the owner.
 
 - 2026-10-03 Created.
 - 2026-10-03 Owner database guidelines merged into `architecture.md` (environment, schema), `coding.md` (migrations, database safety) and `index.md` (destructive-SQL rule). Reconciled: DB lives in the workspace, not `./data/`; embedded SQLite keeps in-code additive migrations, server Postgres uses timestamped UP/DOWN files.
+- 2026-10-03 Added `coding.md#data-objects` (frozen dataclasses; validate at the edge; Pydantic only at heavy-parsing edges) and a data-objects row in `testing.md#toolchain`, codifying existing repo practice.

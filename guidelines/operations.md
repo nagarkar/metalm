@@ -76,6 +76,7 @@ Every launchd job script (example: tradelm `scripts/nightly.sh`):
 - **Alerts on failure only:** each step goes through a `step` helper that logs its exit code and records a failure; an `EXIT` trap sends one macOS notification naming the failed steps, and names "the run itself" when the run was cut short. A clean run is silent (an alert every night is ignored). The notifier path is overridable by env var so tests can stub it.
 - **Treats "not configured" as a skip, not a failure:** a step whose setup is missing on this machine (e.g. a Sheets token) logs `skipped: …` and exits 0, so it never trips the alert.
 - **Cannot report a run that never started:** the app's page shows "last successful run" from the run rows; that is the check for a missed night.
+- **Checks its machine setup first:** the repo's `doctor` verb checks every owner-run step no code installs (its launch agents loaded, a daily wake 1–30 min before each launchd job's plist hour, the real server answering, `tailscale serve` fronting its port) and prints the fixing command for each miss; exit 1 on any fail. The job runs `doctor` as its first step, so a missing piece reaches that night's failure notification. Read the job's hour from its plist, never a second copy of it. (tradelm `tradelm doctor`; others proposed, does not exist yet.)
 - **Is tested with stub commands:** run a copy of the script in a stand-in repo whose commands are stubs (clean run silent, failures named once and the rest still run, a killed run says so). Never test by running the real job.
 
 ## Scheduled and unattended work

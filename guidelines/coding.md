@@ -24,6 +24,12 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Remove unused parameters; split a signature that encodes a now-false assumption.
 - Full names for identifiers and config keys (`age_of_acquisition_years`), or a comment giving the full form.
 
+### Data objects
+- Plain typed data objects, no getters/setters. Python: `@dataclass(frozen=True, slots=True)`; change by `dataclasses.replace(obj, field=…)`. Mutable only for a short-lived builder inside one function.
+- Behavior lives in pure functions over the data (see Module shape); a method only derives from the object's own fields.
+- Parse and validate untrusted input (JSON, files, LLM replies, HTTP) once at the edge (JSON Schema, or hand-rolled checks naming the bad field), then build data objects; the core trusts its types.
+- `TypedDict` only for JSON-shaped dicts that pass through untouched; no new `NamedTuple`. Pydantic or `msgspec` only at an edge with heavy parsing, never as the internal domain model. Per-language forms: the toolchain table in testing.md.
+
 ### Failure
 - Fail loudly. No silent fallbacks, no degrading to a default, no "best guess", no valuing missing data as zero or drawing a flat line (`MissingBars`, 422 naming the symbol). A silently skipping step never gets fixed. Sole exception: an optional advisory input to a scheduled job that is missing/stale/malformed prints one warning and keeps current behaviour.
 - Leave an attribute out (null) rather than guess it. Unknown relations/labels are dropped and counted, never coerced.

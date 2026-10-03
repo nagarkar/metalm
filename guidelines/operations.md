@@ -79,6 +79,43 @@ Every launchd job script (example: tradelm `scripts/nightly.sh`):
 - **Checks its machine setup first:** the repo's `doctor` verb checks every owner-run step no code installs (its launch agents loaded, a daily wake 1–30 min before each launchd job's plist hour, the real server answering, `tailscale serve` fronting its port) and prints the fixing command for each miss; exit 1 on any fail. The job runs `doctor` as its first step, so a missing piece reaches that night's failure notification. Read the job's hour from its plist, never a second copy of it. (tradelm `tradelm doctor`; others proposed, does not exist yet.)
 - **Is tested with stub commands:** run a copy of the script in a stand-in repo whose commands are stubs (clean run silent, failures named once and the rest still run, a killed run says so). Never test by running the real job.
 
+## Scheduled job checklists (Ruled 2026-10-03)
+Go down the list for the job's type whenever a scheduled job is created or changed, and report each line as done, owner's step pending, or not applicable. **(owner)** marks a step only the owner can do; print its command and ask, never work around it.
+
+**launchd job** (a fixed script on this Mac)
+- [ ] Script in the repo (`scripts/<job>.sh`); every step attempted, no `set -e`; one log file per run.
+- [ ] Re-execs itself under `caffeinate -i -s` once.
+- [ ] Steps go through a `step` helper; an `EXIT` trap notifies on failure only, naming the steps or "the run itself" if cut short.
+- [ ] A missing setup is a logged `skipped:`, exit 0, not a failure.
+- [ ] Runs `doctor` first; `doctor` checks this job's agent and its wake.
+- [ ] One run row per invocation; the app's page shows "last successful run".
+- [ ] Time-critical output before the slow part; independent steps kept separate.
+- [ ] Plist template in `scripts/<label>.plist`; the hour lives only there.
+- [ ] Tested against stub commands (clean run silent, failures named, killed run reported).
+- [ ] **(owner)** Install and load the plist: `cp scripts/<label>.plist ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist`.
+- [ ] **(owner)** Daily wake 1–30 min before the job: `sudo pmset repeat wakeorpoweron MTWRFSU <HH:MM:SS>`.
+- [ ] **(owner)** Notifications allowed for Script Editor (System Settings → Notifications); confirm with a test banner.
+- [ ] After the first scheduled night: read its log and run row, and run `doctor`.
+
+**Local scheduled task** (a Claude run on this Mac, Claude desktop)
+- [ ] Only because it needs judgment and local state; otherwise launchd or a cloud routine.
+- [ ] A narrow prompt: one repo, one goal, stated boundaries (what it never edits, pushes or sends).
+- [ ] The exact commands it needs allow-listed in the repo's `.claude/settings.local.json`, so it never stalls on a prompt.
+- [ ] A per-run and per-day spend cap.
+- [ ] Output is a report, an issue or a PR for the owner; it never merges, approves, moves money or acts on a vendor.
+- [ ] Reads the fixed job's leftovers (log, run rows, outputs) when it sits on top of one; never runs inside it.
+- [ ] One scheduled task per repo; it runs only while the app is open and the Mac awake (one catch-up on wake).
+- [ ] **(owner)** Create or enable it in Claude desktop; run it once by hand and read the run.
+- [ ] When something "did not happen": check the task's last run first.
+
+**Cloud routine** (a Claude run in the cloud on the pushed repo)
+- [ ] Needs nothing on this Mac: only pushed commits, no local data, keys or network.
+- [ ] Works on its own branch `routine/<name>-<date>` and opens one PR; checks for an open routine PR first; a closed PR means pick something else.
+- [ ] Never merges, approves, closes, or pushes to `main`.
+- [ ] Secrets only through the routine's own settings, never the repo.
+- [ ] A narrow prompt with stated boundaries; a spend cap.
+- [ ] **(owner)** Create it (`/schedule`); confirm the next run time; read the first run's log and PR.
+
 ## Scheduled and unattended work
 - Prefer launchd (`~/Library/LaunchAgents`, `StartCalendarInterval`) over a resident daemon; launchd fires missed runs on wake. Start manual; when unattended is wanted, a `schedule install` verb writes the plist and the owner loads it.
 - Plists are machine-specific and not committed. Changing the hour is a plist edit, not code.

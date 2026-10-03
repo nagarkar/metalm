@@ -14,6 +14,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 | write code, a CLI, skill, MCP server, or an LLM call | `coding.md` |
 | write or change tests, or claim something works | `testing.md` |
 | touch a served page, server, launch agent, Tailscale, scheduled task | `operations.md` |
+| create or change a scheduled job (launchd, local scheduled task, cloud routine) | `operations.md#scheduled-job-checklists-ruled-2026-10-03`: go down the list for its type |
 | write an install script | `install-scripts.md` |
 
 ## Repo layout

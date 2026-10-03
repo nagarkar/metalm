@@ -92,14 +92,16 @@ flowchart TD
 
 - Row-based (PostgreSQL, SQLite) to write or fetch whole records; column-based (ClickHouse; DuckDB when local) for aggregations over many rows and few columns.
 - SQLite for embedded, offline-first, single-writer apps. PostgreSQL for high-concurrency server deployments needing strict ACID under many writers and role-based access.
-- **Local vs managed:** `*lm` repos default to local SQLite on the owner's Mac (no Docker, MariaDB or Redis). Once an app has multiple users or is server-hosted, default to managed PostgreSQL to offload backups, replication and failover; self-host only for data sovereignty or zero-latency edge needs.
+- **Local vs managed:** local dev and prototypes default to SQLite in the app's workspace (`~/.<app>/`, see Workspace), never inside the repo. No Docker containers or background Postgres/MariaDB/Redis daemons unless the owner asks. Once an app has multiple users or is server-hosted, default to managed PostgreSQL (e.g. Supabase, Neon), connection string in `.env`, to offload backups, replication and failover; self-host only for data sovereignty or zero-latency edge needs.
 
 ## Relational design
 
 Distilled from enterprise OSS practice (e.g. GitLab's database guidelines).
 
 - **Normalize to 3NF, then stop.** Store each fact once. Denormalize only when a measured query profile demands it; record the measurement in the design doc.
-- **Integrity in the database.** `CHECK` constraints, exact types, foreign keys; application validation is not enough. SQLite: `STRICT` tables and `PRAGMA foreign_keys = ON` on every connection.
+- **Explicit names.** No ambiguous abbreviations: `user_session_id`, not `usid`; `created_at`, not `ts`.
+- **Integrity in the database.** `CHECK` constraints, exact types, explicit `FOREIGN KEY` and `NOT NULL` wherever they apply (foreign keys also tell a future reader, human or model, how tables relate); application validation is not enough. SQLite: `STRICT` tables and `PRAGMA foreign_keys = ON` on every connection.
 - **No wide tables with hot columns.** PostgreSQL writes an update as a new row version, so updating one hot column in a 50-column row copies all 50 and bloats the WAL. Split frequently updated or rarely read columns into 1-to-1 extension tables.
+- **Views for frequent reads.** A frequent read path needing a join chain of more than 3 tables gets a flattened view (`CREATE VIEW vw_<name>`): one token-efficient target for agents and reports.
 - **Index deliberately.** Only columns used in filters, joins and sorts. Over-indexing amplifies every write.
 - **Batch and archive.** High-frequency updates go to a small working-set table, aggregated into the main table in batches to avoid lock contention. Partition large tables by date; archive stale data so indexes stay fast.

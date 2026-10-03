@@ -36,3 +36,4 @@ Status: DRAFT — not yet ratified by the owner.
 - 2026-10-03 Created.
 - 2026-10-03 Owner database guidelines merged into `architecture.md` (environment, schema), `coding.md` (migrations, database safety) and `index.md` (destructive-SQL rule). Reconciled: DB lives in the workspace, not `./data/`; embedded SQLite keeps in-code additive migrations, server Postgres uses timestamped UP/DOWN files.
 - 2026-10-03 Added `coding.md#data-objects` (frozen dataclasses; validate at the edge; Pydantic only at heavy-parsing edges) and a data-objects row in `testing.md#toolchain`, codifying existing repo practice.
+- 2026-10-03 Added `coding.md#typed-decisions-jev`: questions and bars together in one versioned file per decision (owner ruling: they are calibrated together, so they live together); gating per answer type; P(level ≥ k) for Score; verified with a toy app (17 offline tests) and 4 live calls on jev-1.13.0.

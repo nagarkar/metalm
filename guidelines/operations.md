@@ -61,6 +61,23 @@ Scope: served apps on this Mac, their servers and launch agents, scheduled and u
 - Phone review pages have a measured size budget; over it, split into linked parts. Never trim content or guess a bigger budget.
 - Self-contained HTML review pages need no local server; publish with the same file path so the URL stays stable on republish.
 
+## Choosing what runs a scheduled job (Ruled 2026-10-03)
+Decide in this order:
+1. **Does each run need judgment** (reading, deciding, writing code or prose)? No → a fixed script (2). Yes → a Claude run (3). Both → the pattern below (4).
+2. **Fixed script:** needs data, devices or keys that live on this Mac → **launchd** here, with the safeguards below. Must run while the Mac is off → an always-on host (cron/systemd), or GitHub Actions if it keeps no state.
+3. **Claude run:** needs local files, apps or the network → a **local scheduled task** (Claude desktop). Works from the pushed repo alone → a **cloud routine** (runs whether or not the Mac is awake).
+4. **Judgment layered on a fixed job** (the preferred shape when both apply): the fixed job does the work that must be repeatable, on time, and costs nothing per run (data, money, anything irreversible). A separate Claude run reads only what the job left behind (its log, its run rows, its outputs) and summarizes, triages or proposes. The Claude run never sits inside the fixed job, never moves money or data, and its output is a report, an issue or a PR for the owner. When the Claude run is missing or wrong, the fixed job's own results stand.
+- Never put money, orders or data pipelines behind an LLM run: same input must give the same output.
+
+## launchd job safeguards (Ruled 2026-10-03)
+Every launchd job script (example: tradelm `scripts/nightly.sh`):
+- **Holds the Mac awake while it runs:** re-execs itself under `caffeinate -i -s` once (guard with an env var), so a short sleep timer cannot stop it halfway.
+- **Is woken for:** a sleeping Mac does not run it on time (launchd fires it on wake, late). The owner sets a wake a few minutes before (`sudo pmset repeat wakeorpoweron MTWRFSU <HH:MM:SS>`); Claude Code leaves system settings alone and prints the command.
+- **Alerts on failure only:** each step goes through a `step` helper that logs its exit code and records a failure; an `EXIT` trap sends one macOS notification naming the failed steps, and names "the run itself" when the run was cut short. A clean run is silent (an alert every night is ignored). The notifier path is overridable by env var so tests can stub it.
+- **Treats "not configured" as a skip, not a failure:** a step whose setup is missing on this machine (e.g. a Sheets token) logs `skipped: …` and exits 0, so it never trips the alert.
+- **Cannot report a run that never started:** the app's page shows "last successful run" from the run rows; that is the check for a missed night.
+- **Is tested with stub commands:** run a copy of the script in a stand-in repo whose commands are stubs (clean run silent, failures named once and the rest still run, a killed run says so). Never test by running the real job.
+
 ## Scheduled and unattended work
 - Prefer launchd (`~/Library/LaunchAgents`, `StartCalendarInterval`) over a resident daemon; launchd fires missed runs on wake. Start manual; when unattended is wanted, a `schedule install` verb writes the plist and the owner loads it.
 - Plists are machine-specific and not committed. Changing the hour is a plist edit, not code.

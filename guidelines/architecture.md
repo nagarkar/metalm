@@ -12,9 +12,15 @@ Scope: what a good design looks like — principles, OOAD patterns, concurrency,
 - Producer and consumer never import each other; they meet at one hand-off. Never write into another system's state; reach it through one adapter. Reuse house patterns from sibling repos before proposing a library; name where the pattern lives. No forced code sharing: app-local first, shared package only when two consumers need the same behaviour today; but do not argue "small today" against reusing a rich existing system when growth is expected (a mutual dependency is acceptable for now).
 
 ### Deterministic over LLM
-- The LLM has a short list of jobs (extract, draft, propose, explain); everything else is deterministic code. The LLM never ranks, decides a value, invents parameters, or types timestamps/links.
+- The LLM has a short list of jobs (extract, draft, propose, explain); everything else is deterministic code. The LLM never invents parameters or types timestamps/links; it ranks or decides a value only under the gate below.
 - Deterministic passes first, one tight model question last; the LLM receives their protected vocabulary as law; deterministic checks push on every change, generative work is pulled on request.
-- LLM output is quarantined as proposals until a human accepts; it never writes declared/confirmed knowledge. Output outside the declared vocabulary is dropped and counted, never coerced.
+- Gate by consequence, not by who decided (Ruled 2026-10-03). A model may settle a value on its own when all of these hold:
+  - (a) it is a small enough decision that will not impact productivity or key use cases;
+  - (b) the decision is logged as a routine (e.g. as a database hash update or a new entry); where possible, with confidence, model, prompt version and inputs, but these are not strictly necessary;
+  - (c) it is marked as a model's decision, never misrepresented as a person's;
+  - (d) a person can find it later and override it, and the override is recorded for later analysis and improvements.
+- A person must remain in the critical path and accept a model's decision before: a change to behavior or config that hasn't been requested; a destructive or irreversible action; anything outbound (sent, published, or spending past a cap); and any overwrite of knowledge a person declared or confirmed.
+- Output outside the declared vocabulary is dropped and counted, never coerced.
 - Extracted items carry a verbatim anchor matched against source; unmatched ones dropped and counted. Extraction is the index, source text the authority: citations may cite only loci that appeared upstream; import drops and counts the rest. The architecture survives a model change; no unlogged model call.
 
 ### History and identity

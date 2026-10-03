@@ -1,0 +1,51 @@
+{
+  "id": "ticket_triage",
+  "version": 1,
+  "supersedes": null,
+  "bars_status": "calibrated 2026-10-03 on 0 labels (toy: placeholder values)",
+  "bars_changes": [
+    "2026-10-03 initial placeholder bars"
+  ],
+  "questions": {
+    "is_spam": {
+      "type": "noul",
+      "instructions": "Is `ticket.text` automated spam or nonsense rather than a message from a real customer?",
+      "criteria": {
+        "true": "Bulk promotion, phishing, gibberish, or bot output",
+        "false": "A real person asking for help, even if rude or brief"
+      },
+      "bars": {
+        "archive": 0.98
+      }
+    },
+    "department": {
+      "type": "choice",
+      "instructions": "Which team should handle `ticket.text`?",
+      "criteria": {
+        "billing": "Charges, refunds, invoices, payment failures, payouts",
+        "technical": "Bugs, outages, errors, integrations, login problems",
+        "sales": "Pricing questions, upgrades, new accounts, quotes",
+        "none_of_these": "None of the teams above clearly fits"
+      },
+      "bars": {
+        "route": 0.6
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "How urgent is `ticket.text` for the customer's business?",
+      "criteria": [
+        "Question or request with no time pressure",
+        "Inconvenience; the customer can keep working",
+        "Part of the customer's business is blocked or money is delayed",
+        "The customer's business is stopped or money is being lost right now"
+      ],
+      "bars": {
+        "page_manager": {
+          "level": 3,
+          "p": 0.8
+        }
+      }
+    }
+  }
+}

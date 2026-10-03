@@ -9,7 +9,8 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 |---|---|
 | write or change requirements, or file a work item | `requirements.md` |
 | write or change a design doc or diagram | `design.md` |
-| design or review structure: principles, patterns, concurrency, state machines, storage | `architecture.md` |
+| design or review structure: principles, patterns, concurrency, state machines, database choice and schema | `architecture.md` |
+| write SQL, a migration, or query a database | `coding.md#storage-and-migrations` |
 | write code, a CLI, skill, MCP server, or an LLM call | `coding.md` |
 | write or change tests, or claim something works | `testing.md` |
 | touch a served page, server, launch agent, Tailscale, scheduled task | `operations.md` |
@@ -53,6 +54,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 
 - Never mutate owner data or owner-authored content silently. Propose wording; apply only when told. Mechanical operations are fine.
 - Check every place state lives before assuming where it is.
+- Destructive SQL (`DROP`, `TRUNCATE`, `DROP COLUMN`, `DELETE`/`UPDATE` without a targeted `WHERE`): print it and wait for the owner's confirmation. Query with read-only access. More: `coding.md#database-safety`.
 
 ## Writing for the owner
 

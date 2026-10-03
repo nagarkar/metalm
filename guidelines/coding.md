@@ -111,7 +111,13 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - A configuration entity is an immutable row with a content-derived, type-prefixed id (`stg_…`) over canonical params; editing points to a new row; every result references it.
 - Stored schema is defined in code; its doc mirrors it and a test fails if they differ; schema changes first, doc with it. `PRAGMA foreign_keys = ON` per connection (after checking existing rows).
 - Migrations: additive; dual-read single-write through one accessor; aliases kept on read; older DBs upgraded on open, nothing dropped. New column → `SCHEMA` + `MIGRATIONS`, placed last, nullable without default where NULL is the honest history; new table → `SCHEMA` only. Once DBs exist beyond yours, add `PRAGMA user_version` and decline a newer DB.
+- Every migration runs in one explicit transaction (`BEGIN; … COMMIT;`). Embedded SQLite apps: the in-code additive migrations above, applied on open, tracked by `PRAGMA user_version`. Server PostgreSQL: timestamped files `migrations/YYYYMMDDHHMMSS_<what>.sql`, each with UP and DOWN (rollback) sections. Never change a production schema by hand.
+- Inspect the live schema before writing SQL or a migration: `sqlite3 -readonly <db> .schema`, or the configured DB MCP tool.
 - Open SQLite by plain path: a `file:...?mode=ro` URI can open a nonexistent literal file and return empty rows.
+
+### Database safety
+- Agents will not run, without first printing the exact SQL and getting the owner's confirmation in chat: `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, `ALTER TABLE … DROP COLUMN`, or `DELETE`/`UPDATE` without a targeted `WHERE`. This covers resetting test fixtures and dropping obsolete columns too.
+- Analytical questions and query experiments use read-only access (`sqlite3 -readonly`, a read-only Postgres role), never the app's write credentials.
 
 ### State Files: One Bag of Attributes per Subject
 A state file is a bag of attributes, named for the one subject that gives its attributes their relevance. A subject is either:

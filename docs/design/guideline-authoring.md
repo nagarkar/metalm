@@ -34,3 +34,4 @@ Status: DRAFT — not yet ratified by the owner.
 ## Changes
 
 - 2026-10-03 Created.
+- 2026-10-03 Owner database guidelines merged into `architecture.md` (environment, schema), `coding.md` (migrations, database safety) and `index.md` (destructive-SQL rule). Reconciled: DB lives in the workspace, not `./data/`; embedded SQLite keeps in-code additive migrations, server Postgres uses timestamped UP/DOWN files.

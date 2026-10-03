@@ -12,6 +12,7 @@ Engineering rules for the `*lm` repos, plus the skill that brings a repo into li
 | `guidelines/testing.md` | Testing for autonomous agents; per-language toolchain |
 | `guidelines/operations.md` | Served apps, launch agents, Tailscale, sandboxes |
 | `guidelines/install-scripts.md` | How install scripts behave |
+| `examples/` | Tested reference code cited by guidelines |
 | `skills/metalm-setup/` | "Set up a repo" / "make the repo compliant with guidelines" |
 | `docs/` | metalm's own requirements and design |
 

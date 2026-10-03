@@ -1,0 +1,70 @@
+# metalm index
+
+Status: DRAFT — not yet ratified by the owner.
+Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill defaults. A repo's documented exception (in its `docs/design/`) beats these.
+
+## Read before acting
+
+| When you are about to… | Read `~/.claude/metalm/guidelines/` |
+|---|---|
+| write or change requirements, or file a work item | `requirements.md` |
+| write or change a design doc or diagram | `design.md` |
+| design or review structure: principles, patterns, concurrency, state machines, storage | `architecture.md` |
+| write code, a CLI, skill, MCP server, or an LLM call | `coding.md` |
+| write or change tests, or claim something works | `testing.md` |
+| touch a served page, server, launch agent, Tailscale, scheduled task | `operations.md` |
+| write an install script | `install-scripts.md` |
+
+## Repo layout
+
+- `CLAUDE.md` is the one loaded file; `AGENTS.md` is a symlink to it.
+- `docs/requirements/<area>.md`: what the system must do; persistent, edited in place. `docs/design/<area>.md`: decisions with **Why:** and **Rules out:**; DRAFT until the owner ratifies. Both have a `README.md` index and dated `## Changes`.
+- Work items are GitHub issues (`gh`, private repo). Issues are transient deltas; the markdown is the truth.
+- Never create `CONTEXT.md`, `docs/adr/`, `.scratch/`, or a numbered decision log.
+- Skills that say `CONTEXT.md` mean `docs/design/glossary.md`. Skills that say ADR or `docs/adr/` mean the named doc under `docs/design/` (add the decision there, dated Changes line). "Publish to the issue tracker" = create a GitHub issue; "fetch the ticket" = `gh issue view <n> --comments`.
+- "Set up a repo" / "make the repo compliant with guidelines" → `metalm-setup` skill (not `/setup-matt-pocock-skills`).
+
+## Session
+
+- Start: read the design docs for the area and run the repo's `doctor`/status verb; do not redo design or scaffolding. One session per working directory.
+- Token order: fewest turns > fewest output tokens > least uncached input > cached input. Terse replies; `Edit`, not full rewrites; never echo files; subagents for wide searches.
+- End: run `/harvest-tools`; also whenever the same ad-hoc script runs a second time.
+
+## Git and work items
+
+- Branch for every change; never commit to `main`. Push `main`, force-push, or merge only on the owner's word in chat; record such authorizations with date and issue number.
+- One PR per change. Automation opens PRs; it never merges, approves, or closes them.
+- Commit after each completed step. Subject: one sentence of behavior change + `(#<issue>)`; `Closes #N` where it finishes.
+- `git status` before assuming a change landed. Never commit over the owner's uncommitted work.
+- Defects: structured report (evidence file:line, given/observed/expected, owner verdict verbatim), filed only on the owner's confirmation; issue first (records commit + data version), fix second. Mention a filed defect once; keep the defect queue out of domain briefings.
+- `gh`: bodies via heredoc; `gh issue view N --comments`; `gh issue list --json … --jq`; `--add-label`/`--remove-label`; close with `--comment`. Issues and PRs share numbers: resolve `#N` with `gh pr view`, fall back to `gh issue view`. PRs are not a request or triage surface.
+- Triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. `ready-for-agent` = doable without the owner; `ready-for-human` = ask, do not guess. An open question for the owner becomes a `ready-for-human` issue. Work issues in milestone order.
+
+## Asking and approvals
+
+- Ask one question at a time, with your recommendation. Ask only for blocking or product-judgment calls.
+- A multi-step instruction is one instruction: carry it end to end. Offer follow-ups; do not run them unasked.
+- Never approve a gate, answer a review item, tag a release, or send anything to a vendor on the owner's behalf. Never present an automated pick as the owner's.
+- Ask before any spend on a paid service, stating the cost. Nothing public without approval in chat. Show dry-run output before `--yes`. Never run an irreversible "accept all" (e.g. `resolve --all`) unless asked, and then only for what was named.
+- When a rule blocks you, say so; do not work around it. Flag contradictions with a ratified decision; never override silently.
+- Leave system settings to the owner.
+
+## Owner data
+
+- Never mutate owner data or owner-authored content silently. Propose wording; apply only when told. Mechanical operations are fine.
+- Check every place state lives before assuming where it is.
+
+## Writing for the owner
+
+- Never write "refusal", "refuse", "refuses". Say leaves alone, will not, declines; "boundaries" for a does-not-touch section. (Ruled 2026-09-06.)
+- Every setting, flag, pin or config value named comes with its location: file path (line for code), or "proposed, does not exist yet" + the file it would live in; also its default, and whether the file is global or per-unit. (Ruled 2026-09-25.)
+- Terse. Lead with the action; report outcomes, not effort. Plain words, not pipeline jargon. No pasted JSON or old/new text in chat. Summaries 3–5 bullets; no long walkthroughs unless asked. Report in prose per unit (staged, written, left out, skipped). After tool output, state the next action it implies; do not stop at status.
+- Quote owner rulings with their date: "(Ruled YYYY-MM-DD)".
+- Every review ask carries a phone-ready page link.
+- Surface warnings, conflicts and open questions unprompted.
+
+## Memory
+
+- Memory notes carry **Why:**, **How to apply:**, `[[links]]`; `MEMORY.md` is a one-line index.
+- Decisions and rules belong in `docs/design/` or metalm, not memory; move them and delete the note. Correct or delete superseded notes.
+- Before recording a lesson, check it is not already done (`git log`, code).

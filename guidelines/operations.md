@@ -1,0 +1,93 @@
+# Operations
+Status: DRAFT — not yet ratified by the owner.
+Scope: served apps on this Mac, their servers and launch agents, scheduled and unattended work, and checking pages in a browser.
+
+## Served apps (Ruled 2026-10-01)
+- Every app serves its page on loopback behind `tailscale serve`. All share one tailnet name, `host.example.ts.net`, one HTTPS port each:
+
+| app | tailnet HTTPS port | local server | launch agent |
+|---|---|---|---|
+| authorllm (audiobook page) | 443 (bare name) | 127.0.0.1:8792 | proposed, does not exist yet |
+| supplylm (review page) | 8443 | 127.0.0.1:8777 | proposed, does not exist yet |
+| tradelm (approvals, accounts, dashboard) | 9443 | 127.0.0.1:9443 | `~/Library/LaunchAgents/com.nagarkar.tradelm.serve.plist` (installed 2026-10-01) |
+| gamelm (Vocingo review) | 10443 | 127.0.0.1:8778 | proposed, does not exist yet |
+
+- This table is the one place ports are recorded. A repo's skill may repeat its own row; it never assigns a port.
+- One port per app. Never map paths under one port: Tailscale forwards the prefix and pages use root-relative routes. Never use `--set-path`. Never take another app's port.
+- The app binds loopback only; `tailscale serve` fronts it. Answer only Host headers naming this machine (loopback, `*.ts.net`), else 421.
+- The page the owner looks at is the app's one real server. A running server keeps the code it started with, so a change does not exist for the owner until that server is restarted onto it.
+- One local server process per app hosts all its pages (job UI, dashboard, approvals); no cloud hosting until missed runs prove a need. One server per unit of work where the app has units (e.g. gamelm: one SKU per server, named on the command line).
+- `doctor` checks Tailscale is connected and prints the URL. It should warm the cert: the first HTTPS hit takes ~12 s.
+- A new app takes the next free tailnet port and gets a row in this table, a launch agent, and a sandbox script before its first UI change.
+
+## tailscale serve
+- `tailscale serve` changes exposure: run it only on the owner's word in chat.
+- One form only: `tailscale serve --bg --https=<port> http://127.0.0.1:<local>`. Always pass `--https` explicitly; a bare `--bg <port>` takes the 443 slot. Superseded forms: `--https=8443 8777` (no URL), bare `serve --bg <port>`.
+- Confirm with `tailscale serve status`.
+- Run Tailscale commands unsandboxed or ask the owner to run them in a terminal (the sandbox fails with "The Tailscale GUI failed to start"). CLI path on the iMac: `/usr/local/bin/tailscale`.
+
+## Launch agents
+- The real server runs under a launch agent: starts at login, restarts if it dies, logs to `~/.<app>/logs/serve.log`.
+- The plist template lives in the repo under `scripts/` (e.g. tradelm `scripts/com.nagarkar.tradelm.serve.plist`); the installed copy in `~/Library/LaunchAgents/` is machine-specific and not committed.
+- The owner installs launch agents. Claude Code will not add anything that starts at login; print the install command instead.
+- Restart only with `launchctl kickstart -k gui/501/com.nagarkar.<app>.serve`, allowed for that one command in the repo's `.claude/settings.local.json`.
+- launchd wins over `nohup`. Never start a server detached with `nohup` (superseded: tradelm SKILL `/health` fallback, supplylm `nohup ./supplylm.sh app`).
+- An app without a launch agent yet: ask the owner to install one before relying on restarts. Until then ask the owner to restart the server; do not start or stop it yourself.
+
+## After every change that touches an app's pages
+1. Run the tests.
+2. Restart the real server through its launch agent (`launchctl kickstart -k …`). Never stop the server's process by hand.
+3. Check the change on the real server, read-only, in the browser, in every state the page draws differently (with and without a chosen item, default and custom settings). Look only: no clicks that write.
+4. For states the real data lacks, use the repo's sandbox script.
+5. Report what was checked, in which states, and anything that could not be checked.
+- Restart and check are part of "done". If the restart is not possible (no launch agent, permission missing), say so plainly and ask the owner to restart.
+- Never report a change as visible until the real server has been restarted onto it and checked.
+
+## Sandbox script
+- Every served app has one: `scripts/sandbox_server.sh [port]` (tradelm has it; for others, proposed, does not exist yet).
+- It starts a throwaway server on a spare port (tradelm default 9450) and declines the real port.
+- Each start makes a fresh copy of the app's data outside the real data directory (declines a path inside it). Copy SQLite with `sqlite3 … ".backup"` so it is consistent while the real server runs.
+- It strips credentials that act outside the Mac (brokers, email, payments) from the environment, so nothing tapped in the sandbox reaches anywhere.
+- Change anything there; stop it when done. Its state is lost on next start.
+
+## Boundaries
+- No second server against an app's real data, ever. Two code versions on one database overwrite each other's caches (tradelm, 2026-09-30: the owner's server stayed on morning code and saw none of the changes).
+- Never kill the real server's process by hand.
+- Never run `tailscale serve` without the owner's word.
+- Keep an old surface (and its scheduled sync) running until the new one has carried a real session.
+
+## Handing out links
+- Before handing out an app link, verify it is live: `curl` its `/health`, and `tailscale serve status`. Then reply with just the link.
+- Phone review pages have a measured size budget; over it, split into linked parts. Never trim content or guess a bigger budget.
+- Self-contained HTML review pages need no local server; publish with the same file path so the URL stays stable on republish.
+
+## Scheduled and unattended work
+- Prefer launchd (`~/Library/LaunchAgents`, `StartCalendarInterval`) over a resident daemon; launchd fires missed runs on wake. Start manual; when unattended is wanted, a `schedule install` verb writes the plist and the owner loads it.
+- Plists are machine-specific and not committed. Changing the hour is a plist edit, not code.
+- Local scheduled tasks (Claude desktop) run only while the app is open and the Mac awake, with one catch-up on wake. Use them, not cloud routines, when state lives on the Mac; one scheduled task per repo.
+- Unattended tasks stall on permission prompts nobody answers (gamelm: 51 decisions sat 5 days; the task died holding the lock). Allow-list the exact commands in the repo's `.claude/settings.local.json` (e.g. `Bash(./gamelm.sh vocingo *)`).
+- When a scheduled request "did not go through", check the task's last run first.
+- Jobs attempt every step whether an earlier one failed (no `set -e`); one log file per run; one run row per invocation, `error` if any item failed, closed even on exception or Ctrl-C; retries say so on stderr; the page shows "last successful run".
+- One idempotent `tick` verb runs every pending job from a jobs table under a lock with heartbeat (`--force` takes a dead lock); schedulers call `tick`; no resident daemon or queue broker.
+- Keep independent steps separate so one does not consume another's retry budget or pass/fail status. Put the time-critical output before the slow part.
+- A required volume unmounted: exit with a message, create nothing, let launchd retry. Fix by mounting, never `mkdir`.
+- No LLM spend runs unattended without a per-run and per-day cap (open question in authorllm).
+- Cloud routines see only pushed commits; each works on its own branch `routine/<name>-<date>` and opens one PR. Check open routine PRs first to avoid duplicates; a closed PR means pick something else.
+- An irreplaceable database with no verified backup (`PRAGMA integrity_check` on a verified copy) is not deployed. Retention is the owner's call.
+- Before killing a "stalled" process, confirm via log tail and output growth. Long stages run in the background; check in rather than block.
+
+## Browser checks
+- Check pages in real Chrome, driven with `mcp__claude-in-chrome__*`, at desktop width and at 375 px mobile width.
+- The Claude desktop Browser pane (`mcp__Claude_Browser__*`) cannot run local fetch-based apps: every fetch and API POST fails `net::ERR_BLOCKED_BY_CLIENT`. Never use it to check a served app. It also suppresses native `confirm()`, so pages use inline confirms.
+- The in-app preview renders local files statically; Chrome tools cannot click inside an Artifact frame. Verify Artifact page logic with a headless jsdom harness (optional dev check behind a node/jsdom presence test).
+- Every review ask carries a phone-ready page link in the same message.
+
+## Sandboxed shell quirks
+- Sandboxed Bash lacks LLM keys and the `claude` CLI; LLM-dependent commands run in the owner's terminal. Install skills with `npx skills add … --copy`.
+- Browser-opening logins (OAuth) run via Bash, never MCP, and only on the owner's request in chat; say a browser will open first; long timeout (≥5 min). Only the `login` verb opens a browser; every other verb stops with "run <login>" when auth lapses.
+- Run heavy installs sequentially (parallel installs exhausted vnodes).
+
+## Credentials
+- Each repo has its own OAuth client and token in its gitignored `.env` / `.config/` (token file mode 600); never reuse another repo's client or token.
+- Minimal scopes (e.g. `gmail.modify`; Sheets `drive.file` so only self-created files are visible).
+- Separate credentials for test and production (paper/live). Live requires an exact confirmation-phrase env var, not a boolean; a mismatch raises, never falls back.

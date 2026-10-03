@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# superlm-notify: one macOS notification from any *lm repo, under the SuperLM name
+# and icon (metalm tools/notifier). Banner title: the repo (and --title); text: the
+# message.
+#
+#   superlm-notify --repo tradelm [--title "Nightly job"] --body "Failed: refresh-bars."
+#
+# Exits 0 when macOS took the banner; 1, with the reason on stderr, when it was
+# not shown (app not built: run metalm's install.sh; notifications not allowed:
+# System Settings → Notifications → SuperLM). There is no fallback banner.
+set -uo pipefail
+HERE="$(cd "$(dirname "$(readlink "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" && pwd -P)"
+APP="${SUPERLM_NOTIFIER_APP:-$HERE/../tools/notifier/build/SuperLM Notifier.app}"
+if [ ! -x "$APP/Contents/MacOS/superlm-notifier" ]; then
+  echo "superlm-notify: the SuperLM notifier is not built; run metalm's install.sh" >&2
+  exit 1
+fi
+status="$(mktemp)"
+trap 'rm -f "$status"' EXIT
+# Launched as an app (macOS grants notifications only then). `open -W` can return
+# before the app is done, so wait on its status file, as long as the app waits.
+/usr/bin/open -n "$APP" --args "$@" --status-file "$status" >/dev/null 2>&1
+waited=0
+while [ ! -s "$status" ] && [ "$waited" -lt 130 ]; do sleep 1; waited=$((waited + 1)); done
+result="$(cat "$status" 2>/dev/null)"
+[ "$result" = "ok" ] && exit 0
+echo "superlm-notify: ${result:-no answer from the notifier}" >&2
+exit 1

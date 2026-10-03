@@ -1,3 +1,5 @@
 .DS_Store
 .claude/settings.local.json
 *.bak.*
+# The SuperLM notifier app, built by install.sh (tools/notifier/build.sh).
+tools/notifier/build/

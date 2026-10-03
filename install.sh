@@ -16,12 +16,23 @@ esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 LINK="$CLAUDE_DIR/metalm"
+BIN_DIR="$HOME/.local/bin"
+NOTIFY_LINK="$BIN_DIR/superlm-notify"
+NOTIFIER="$ROOT/tools/notifier"
 GLOBAL_MD="$CLAUDE_DIR/CLAUDE.md"
 BEGIN='<!-- metalm:begin -->'
 END='<!-- metalm:end -->'
 
 for cmd in git gh; do
   command -v "$cmd" >/dev/null || echo "warning: '$cmd' not found; metalm-setup needs it" >&2
+done
+# Only the SuperLM notifier needs these (Xcode command line tools: xcode-select --install).
+NOTIFIER_OK=1
+for cmd in swift swiftc iconutil sips codesign shasum; do
+  command -v "$cmd" >/dev/null || {
+    echo "warning: '$cmd' not found; the SuperLM notifier is not built (xcode-select --install)" >&2
+    NOTIFIER_OK=0
+  }
 done
 
 run() { if [ "$MODE" = dry ]; then echo "would: $*"; else "$@"; fi; }
@@ -61,6 +72,7 @@ $BEGIN
 - Engineering rules for my repos live in metalm (\`~/.claude/metalm\`, a symlink to $ROOT); metalm governs.
 - A repo opts in with \`@~/.claude/metalm/guidelines/index.md\` in its \`CLAUDE.md\`.
 - "Set up a repo", "make the repo compliant with guidelines", "adopt metalm" / "grandfather this repo", or "check conformance with metalm" means: run the \`metalm-setup\` skill. It replaces \`/setup-matt-pocock-skills\`.
+- Unattended or long-running work alerts with \`superlm-notify --repo <repo> [--title T] --body <message>\` (\`~/.local/bin\`, the SuperLM notifier).
 $END
 EOF
 }
@@ -100,7 +112,24 @@ remove_block() {
   [ -s "$GLOBAL_MD" ] || { rm "$GLOBAL_MD"; echo "removed empty: $GLOBAL_MD"; }
 }
 
+# The SuperLM notifier app: built inside the clone (tools/notifier/build/, git-ignored),
+# and only when its sources changed since the last build.
+build_notifier() {
+  [ "$NOTIFIER_OK" = 1 ] || return 0
+  local want have
+  want="$("$NOTIFIER/stamp.sh")"
+  have="$(cat "$NOTIFIER/build/.stamp" 2>/dev/null || true)"
+  if [ "$want" = "$have" ] && [ -x "$NOTIFIER/build/SuperLM Notifier.app/Contents/MacOS/superlm-notifier" ]; then
+    echo "ok: SuperLM notifier current"; return
+  fi
+  if [ "$MODE" = dry ]; then echo "would: build $NOTIFIER/build/SuperLM Notifier.app"; return; fi
+  "$NOTIFIER/build.sh"
+  NOTIFIER_BUILT=1
+}
+NOTIFIER_BUILT=0
+
 if [ "$MODE" = uninstall ]; then
+  unlink_if_ours "$NOTIFY_LINK"
   unlink_if_ours "$LINK"
   for s in "$ROOT"/skills/*/; do unlink_if_ours "$CLAUDE_DIR/skills/$(basename "$s")"; done
   remove_block
@@ -113,4 +142,11 @@ for s in "$ROOT"/skills/*/; do
   symlink "${s%/}" "$CLAUDE_DIR/skills/$(basename "$s")"
 done
 f="$(mktemp)"; block > "$f"; write_block "$f"; rm "$f"
-echo "done. Update later with: git -C $ROOT pull"
+build_notifier
+run mkdir -p "$BIN_DIR"
+symlink "$ROOT/bin/superlm-notify" "$NOTIFY_LINK"
+case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "note: $BIN_DIR is not on PATH; call $NOTIFY_LINK by its full path" ;; esac
+if [ "$NOTIFIER_BUILT" = 1 ]; then
+  echo "owner: the first banner asks to allow notifications from SuperLM; allow them, or turn them on in System Settings → Notifications → SuperLM"
+fi
+echo "done. Update later with: git -C $ROOT pull && $ROOT/install.sh"

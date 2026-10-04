@@ -68,9 +68,20 @@ Tripwire/policy examples worth copying:
 - Adding a path pins the legacy path unchanged (a `...AreUnchanged` test).
 - Pipelines with a swappable processor inject the fake and assert downstream has no remote-specific branch.
 
+### Where tests live (Ruled 2026-10-03)
+- **Unit tests live with the code.** They sit in the same repo and package as the code they test (`tests/` mirrors `src/<pkg>/`). A library's own suite proves the library: changing it never requires another repo's suite to pass first.
+- **Integration tests do not make up for unit tests.** A module covered only through an end-to-end journey has no unit tests. Integration tests have three gaps:
+  - a failure doesn't point at the faulty unit;
+  - they can't cheaply reach every boundary and error path;
+  - they give mutation testing few tests to kill a mutant with.
+
+  Only thin glue (a function that only wires already tested units) may rely on integration tests alone.
+- **Integration tests live with the dependent.** If A depends on B, the tests that run A and B together live in A, or in a third repo that depends on both. Never in B: B would need A to bootstrap its tests, which is a circular dependency. Instead, B ships what its consumers need to test against it: fakes, fixtures, and contract tests of its own interface.
+- **Moving code moves its unit tests.** When code moves to another repo (an extracted library), its unit tests move in the same PR, and its consumer keeps the integration tests. Code that has only integration tests gets unit tests at the destination before or with the move, never "later".
+
 Suite structure:
 - Tests mirror `src/<pkg>/` one-to-one.
-- Infra/generic tests run on a synthetic fixture project and never import a real project. Project-specific tests prove only that project's customisation and never re-assert what infra already enforces. No third top-level suite.
+- Infra/generic tests run on a synthetic fixture project and never import a real project. Project-specific tests prove only that project's customisation and never re-assert what infra already enforces. No third top-level suite within one repo (a third repo for cross-repo integration tests is a different thing; see Where tests live).
 - When a data model changes, list the new tests and the existing ones to update (schema, graph, CLI shape) in the PR.
 - Optional-dependency tests skip with a stated reason, never error. Optional tool absence at runtime is reported, not fatal.
 - External vendor/validator checks are acceptance steps, not tests.

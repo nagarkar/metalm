@@ -16,6 +16,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 | put `.env` outside the checkout, share one between repos, or read a new environment variable | `coding.md#where-env-lives-ruled-2026-10-03` |
 | write code, a CLI, skill, MCP server, or an LLM call | `coding.md` |
 | write or change tests, or claim something works | `testing.md` |
+| move code between repos, or decide where a test belongs | `testing.md#where-tests-live-ruled-2026-10-03` |
 | touch a served page, server, launch agent, Tailscale, scheduled task | `operations.md` |
 | create or change a scheduled job (launchd, local scheduled task, cloud routine) | `operations.md#scheduled-job-checklists-ruled-2026-10-03`: go down the list for its type |
 | write an install script | `install-scripts.md` |

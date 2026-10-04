@@ -97,7 +97,7 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Non-Python package files read at runtime are declared in packaging (`[tool.setuptools.package-data]` in `pyproject.toml`); editable installs hide the gap, wheels omit the files.
 - Heavy dependencies behind optional extras (`pip install -e ".[dev]"`, `.[stt]`). Core works offline without a model or network where the product allows.
 - One network step (plus model calls); everything else offline. `doctor` is the gate: checks the environment and every bind; each missing item (download, asset, key) says what it is, what breaks and how to get it (exact fetch command); never substitutes a placeholder. Run it on a new machine and after any dependency, font or config change.
-- Run verbs through the repo's launcher `./<repo>.sh <verb> <target>`: cd to the repo, `PYTHONPATH=src`, `set -a; source .env; set +a`, exec venv python `-m <pkg>.cli`; a real env var wins over `.env`.
+- Run verbs through the repo's launcher `./<repo>.sh <verb> <target>`: cd to the repo, `PYTHONPATH=src`, load `.env` (the checkout's, or the file `<REPO>_ENV` names; see Where `.env` lives), exec venv python `-m <pkg>.cli`; a real env var wins over `.env`.
 - Commit reviewable data with a `.provenance.yaml` sidecar (source, license, retrieval date, SHA-256), test-enforced. Large sources: fetched once into a gitignored cache named in config.
 - Bash completion is generated from the argument parser at eval time so it never drifts.
 - Every stage writes `work/logs/<stage>.log` (full command lines, stderr, rendered payload, raw model reply), truncated per run; the terminal shows only the board/tail. Read the log before rerunning a failed stage.
@@ -112,6 +112,15 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Never hand-edit state or write ad-hoc scripts that bypass validation/fingerprints (no one-off backfills, no hand-dumped fingerprints, no `ps`/`stat` polling loops). Use the verb (`approve --set`, `status --why`, `verify`); add the verb if missing.
 - A file a person curates is theirs: tools append/increment, never rewrite an entry a person touched. Exported notes carry a marker; unmarked files are never touched. Cross-run knowledge: small committed JSON/JSONL.
 
+
+### Where `.env` lives (Ruled 2026-10-03)
+`.env` may live outside the checkout, and several repos may share one. Config never moves.
+- **One override per repo.** A repo reads the checkout's `.env` unless `<REPO>_ENV` (e.g. `YTLM_ENV`, `BEELM_ENV`) names another file by absolute path. Every repo supports it, in the one function that finds `.env` (`paths.env_path()`).
+- **Set where a file can't be.** `<REPO>_ENV` is set in the process environment: the shell profile, the launchd plist, the `env` of `.mcp.json`. Never inside a `.env`, which can't say where it is.
+- **A shared `.env`.** Each repo's `setup` writes only inside its own managed block (`# <repo>:begin` / `# <repo>:end`, install-scripts.md), holding its repo-prefixed pointers (`YTLM_WORKSPACE`, `BEELM_DB`). Vendor keys keep the vendor's name (`GEMINI_API_KEY`), sit outside every block, are shared, and are edited by the owner. Each repo keeps a checked-in `.env.example`.
+- **`doctor` says which file.** It reports the `.env` path it read and whether `<REPO>_ENV` chose it.
+- **Config stays in the repo.** `config.toml` (or YAML) always lives in the checkout. No environment variable moves it, because config is never shared. To keep a repo's config private, gitignore it and check in `config.example.toml`.
+- **No other environment switches.** No environment variable turns on a test fake, silences a side effect or redirects a file. Tests inject fakes in-process: a module attribute that defaults to `None` and is set with `monkeypatch`. A variable left exported in a shell, a plist or `.mcp.json` must not change what a real run does. Vendor keys, workspace and database pointers, and spend gates are the only environment variables a repo reads.
 ### Storage and migrations
 - SQLite catalog + FTS + artifact files: each artifact row points at its file with a hash; staleness is byte comparison; attachments stored once by content hash with path, MIME type, origin; nothing copied, large artifacts referenced by tag and hash. Tables share a base (id, version, created_at, created_by, schema_version, metadata); history rows immutable.
 - A configuration entity is an immutable row with a content-derived, type-prefixed id (`stg_…`) over canonical params; editing points to a new row; every result references it.

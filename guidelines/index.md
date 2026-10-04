@@ -17,6 +17,8 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 | write code, a CLI, skill, MCP server, or an LLM call | `coding.md` |
 | write or change tests, or claim something works | `testing.md` |
 | touch a served page, server, launch agent, Tailscale, scheduled task | `operations.md` |
+| check, diagnose or screenshot a served page (including "the owner cannot see it") | `operations.md#browser-checks` and `operations.md#served-apps-ruled-2026-10-01` |
+| design or change a page's layout or navigation, or hand over a UI feature | `ui.md` |
 | create or change a scheduled job (launchd, local scheduled task, cloud routine) | `operations.md#scheduled-job-checklists-ruled-2026-10-03`: go down the list for its type |
 | write an install script | `install-scripts.md` |
 

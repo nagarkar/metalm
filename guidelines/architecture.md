@@ -97,7 +97,7 @@ flowchart TD
 ```
 
 - Row-based (PostgreSQL, SQLite) to write or fetch whole records; column-based (ClickHouse; DuckDB when local) for aggregations over many rows and few columns.
-- SQLite for embedded, offline-first, single-writer apps. PostgreSQL for high-concurrency server deployments needing strict ACID under many writers and role-based access.
+- SQLite for embedded, offline-first, single-writer apps. A few local processes from sibling repos sharing one file under WAL still count: see `coding.md#sharing-one-database-between-repos-ruled-2026-10-03`. PostgreSQL for high-concurrency server deployments needing strict ACID under many writers and role-based access.
 - **Local vs managed:** local dev and prototypes default to SQLite in the app's workspace (`~/.<app>/`, see Workspace), never inside the repo. No Docker containers or background Postgres/MariaDB/Redis daemons unless the owner asks. Once an app has multiple users or is server-hosted, default to managed PostgreSQL (e.g. Supabase, Neon), connection string in `.env`, to offload backups, replication and failover; self-host only for data sovereignty or zero-latency edge needs.
 
 ## Relational design

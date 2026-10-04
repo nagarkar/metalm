@@ -121,6 +121,18 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Inspect the live schema before writing SQL or a migration: `sqlite3 -readonly <db> .schema`, or the configured DB MCP tool.
 - Open SQLite by plain path: a `file:...?mode=ro` URI can open a nonexistent literal file and return empty rows.
 
+### Sharing one database between repos (Ruled 2026-10-03)
+When two or more repos hold the same kind of data (ytlm and beelm: transcripts from different sources), they share one SQLite file, not two copies of a schema. Example: `transcript.db`, schema owned by `corpuslm`.
+- **One schema owner.** Exactly one package defines `SCHEMA`, `MIGRATIONS` and the schema-vs-doc test. Every other repo imports it at the same version (editable install of the owner's repo). No other repo writes DDL against the file.
+- **One pointer per repo.** Each repo names the file in its own gitignored `.env` (`YTLM_DB`, `BEELM_DB`): an absolute path, documented in `.env.example`. Each repo's `doctor` checks the file exists and that the repo's pointer resolves (`realpath`) to the same file as its siblings' pointers. A missing file is a loud failure; only the schema owner's `setup` creates it.
+- **Rows say where they came from.** Each source row carries a `kind` (`youtube`, `bee`); a repo writes only rows of its own kind plus shared tables (corpora, glossary). Paths stored in rows are relative to that kind's own workspace, never absolute, so moving a workspace changes one `.env` line.
+- **Same machine, local disk.** The file lives on a disk mounted on this Mac (internal or external volume), never on a network share or a synced folder (iCloud, Dropbox): WAL needs shared memory on one host. An unmounted volume fails loudly; nothing creates a stand-in.
+- **Connection settings, every connection:** `PRAGMA journal_mode=WAL` (persistent; set by `setup`, checked by `doctor`), `PRAGMA busy_timeout=5000` or more, `PRAGMA foreign_keys=ON`, `PRAGMA synchronous=NORMAL`. Writes use `BEGIN IMMEDIATE` and stay short: never hold a write transaction across an LLM call, a network fetch or a prompt to the owner.
+- **Versions in lockstep.** `PRAGMA user_version` is the schema version. A repo whose code knows an older version declines to open a newer file (no write, a message naming the version). Migrations run on open, inside `BEGIN IMMEDIATE`, so exactly one process migrates; the others wait on `busy_timeout`, then see the new version.
+- **Renames are the one non-additive change allowed,** and only on the owner's word in chat: back up first (`sqlite3 <db> ".backup <db>.<YYYYMMDD>.bak"` or `VACUUM INTO`; never `cp` a live WAL file), then `ALTER TABLE … RENAME` / `RENAME COLUMN` in one transaction, plus a read-only view under the old name until every consumer reads the new one.
+- **Moving or renaming the file:** stop every writer first (unload each repo's launch agents, stop servers), back up, move, update every repo's pointer, run each repo's `doctor`. Moving the owner's database file is an owner-data operation: print the commands and wait for the word.
+- **Tests never touch the shared file.** Each suite builds its own temporary database from the owner's `SCHEMA`; the `conftest.py` scrub removes `<REPO>_DB`.
+
 ### Database safety
 - Agents will not run, without first printing the exact SQL and getting the owner's confirmation in chat: `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, `ALTER TABLE … DROP COLUMN`, or `DELETE`/`UPDATE` without a targeted `WHERE`. This covers resetting test fixtures and dropping obsolete columns too.
 - Analytical questions and query experiments use read-only access (`sqlite3 -readonly`, a read-only Postgres role), never the app's write credentials.

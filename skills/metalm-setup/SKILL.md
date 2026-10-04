@@ -62,6 +62,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - `CONTEXT.md` → `docs/design/glossary.md`. `docs/adr/NNNN-*.md` → the matching named area doc.
 - `AGENTS.md` content → `CLAUDE.md`; then `ln -s CLAUDE.md AGENTS.md`.
 - Write `docs/agents/*` and `.vscode/extensions.json` from templates. Delete `docs/agents/domain.md`.
+- Create the five triage labels on the GitHub repo before filing any issue (a `ready-for-human` issue fails without them): `for l in needs-triage needs-info ready-for-agent ready-for-human wontfix; do gh label create "$l" --force; done`.
 - Old path cited anywhere (code comments, docs, memory) → leave a one-line pointer stub at the old path.
 - Fill gaps with DRAFT stubs, never invented content: a missing section gets `TODO(owner): …`.
 

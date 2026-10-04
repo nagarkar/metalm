@@ -83,6 +83,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - [ ] Every setting named in docs gives its location.
 - [ ] No "refusal"/"refuse"/"refuses" in docs (`grep -rniw 'refus\w*' docs CLAUDE.md`).
 - [ ] `docs/agents/issue-tracker.md` says GitHub; `.vscode/extensions.json` lists the Mermaid extension.
+- [ ] The GitHub repo has the five triage labels (`gh label list`: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`).
 - [ ] Repo skill exists at `.claude/skills/<repo>/SKILL.md`.
 - [ ] Test suite runs green (command recorded in `CLAUDE.md`).
 

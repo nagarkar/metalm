@@ -11,6 +11,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 | write or change a design doc or diagram | `design.md` |
 | design or review structure: principles, patterns, concurrency, state machines, database choice and schema | `architecture.md` |
 | write SQL, a migration, or query a database | `coding.md#storage-and-migrations` |
+| plan a non-additive migration or a refactor spanning several PRs or repos | `coding.md#major-migrations-and-multi-step-refactors-ruled-2026-10-03` |
 | share a database between repos, or point a repo at another repo's database | `coding.md#sharing-one-database-between-repos-ruled-2026-10-03` |
 | write code, a CLI, skill, MCP server, or an LLM call | `coding.md` |
 | write or change tests, or claim something works | `testing.md` |

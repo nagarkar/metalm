@@ -1,6 +1,5 @@
 # Requirements
 
-Status: DRAFT — not yet ratified by the owner. Rules marked `(owner)` are the owner's.
 Scope: what a repo's requirements are (CUJs generated from code), how to write a CUJ, work items, checking docs against code, and capturing owner input.
 
 ## CUJs are generated from the code

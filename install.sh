@@ -149,4 +149,6 @@ case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "note: $BIN_DIR is not on PATH; cal
 if [ "$NOTIFIER_BUILT" = 1 ]; then
   echo "owner: the first banner asks to allow notifications from SuperLM; allow them, or turn them on in System Settings → Notifications → SuperLM"
 fi
+# Guidelines over their line caps still install; the warning names the file to cut.
+"$ROOT/tools/check-caps.sh" || echo "warning: a guideline is over its cap (docs/design/guideline-authoring.md); see above" >&2
 echo "done. Update later with: git -C $ROOT pull && $ROOT/install.sh"

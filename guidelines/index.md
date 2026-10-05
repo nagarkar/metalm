@@ -17,10 +17,10 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 | write code, a CLI, skill, MCP server, or an LLM call | `coding.md` |
 | write or change tests, or claim something works | `testing.md` |
 | move code between repos, or decide where a test belongs | `testing.md#where-tests-live-ruled-2026-10-03` |
-| touch a served page, server, launch agent, Tailscale, scheduled task | `operations.md` |
+| touch a served page, server, launch agent, Tailscale | `operations.md` |
 | check, diagnose or screenshot a served page (including "the owner cannot see it") | `operations.md#browser-checks` and `operations.md#served-apps-ruled-2026-10-01` |
 | design or change a page's layout or navigation, or hand over a UI feature | `ui.md` |
-| create or change a scheduled job (launchd, local scheduled task, cloud routine) | `operations.md#scheduled-job-checklists-ruled-2026-10-03`: go down the list for its type |
+| create or change a scheduled job (launchd, local scheduled task, cloud routine) or unattended work | `scheduling.md`: go down the checklist for its type |
 | write an install script | `install-scripts.md` |
 
 ## Repo layout
@@ -65,7 +65,6 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 
 ## Writing for the owner
 
-- Never write "refusal", "refuse", "refuses". Say leaves alone, will not, declines; "boundaries" for a does-not-touch section. (Ruled 2026-09-06.)
 - Every setting, flag, pin or config value named comes with its location: file path (line for code), or "proposed, does not exist yet" + the file it would live in; also its default, and whether the file is global or per-unit. (Ruled 2026-09-25.)
 - Terse. Lead with the action; report outcomes, not effort. Plain words, not pipeline jargon. No pasted JSON or old/new text in chat. Summaries 3–5 bullets; no long walkthroughs unless asked. Report in prose per unit (staged, written, left out, skipped). After tool output, state the next action it implies; do not stop at status.
 - Quote owner rulings with their date: "(Ruled YYYY-MM-DD)".

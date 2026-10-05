@@ -71,7 +71,7 @@ $BEGIN
 
 - Engineering rules for my repos live in metalm (\`~/.claude/metalm\`, a symlink to $ROOT); metalm governs.
 - A repo opts in with \`@~/.claude/metalm/guidelines/index.md\` in its \`CLAUDE.md\`.
-- "Set up a repo", "make the repo compliant with guidelines", "adopt metalm" / "grandfather this repo", or "check conformance with metalm" means: run the \`metalm-setup\` skill. It replaces \`/setup-matt-pocock-skills\`.
+- "Set up a repo", "make the repo compliant with guidelines", "adopt metalm" / "grandfather this repo", or "check conformance with metalm" means: run the \`metalm-setup\` skill.
 - Unattended or long-running work alerts with \`superlm-notify --repo <repo> [--title T] --body <message>\` (\`~/.local/bin\`, the SuperLM notifier).
 $END
 EOF
@@ -149,4 +149,6 @@ case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "note: $BIN_DIR is not on PATH; cal
 if [ "$NOTIFIER_BUILT" = 1 ]; then
   echo "owner: the first banner asks to allow notifications from SuperLM; allow them, or turn them on in System Settings → Notifications → SuperLM"
 fi
+# Guidelines over their line caps still install; the warning names the file to cut.
+"$ROOT/tools/check-caps.sh" || echo "warning: a guideline is over its cap (docs/design/guideline-authoring.md); see above" >&2
 echo "done. Update later with: git -C $ROOT pull && $ROOT/install.sh"

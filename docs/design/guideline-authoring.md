@@ -6,7 +6,7 @@ Status: DRAFT — not yet ratified by the owner.
 
 - Reader is a strong model. Bullets, short imperative sentences, a "Why" clause only where non-obvious.
 - Generic rules only. A product-specific rule stays in its repo's `docs/design/`; it appears here only as a one-line example.
-- Hard caps (lines): `index.md` 80, `requirements.md` 160, `design.md` 160, `architecture.md` 130, `coding.md` 300, `testing.md` 200, `operations.md` 120, `install-scripts.md` 60. Over the cap → cut or split, never raise silently.
+- Hard caps (lines): `index.md` 80, `requirements.md` 160, `design.md` 160, `architecture.md` 130, `coding.md` 310, `testing.md` 200, `operations.md` 120, `scheduling.md` 80, `ui.md` 80, `install-scripts.md` 60. `tools/check-caps.sh` reads this line and fails on any file over its cap; `install.sh` runs it. Over the cap → cut or split, never raise silently.
 
 **Why:** long rule files are followed less, and `index.md` is paid for in every session. Cached input is cheap; attention is not.
 

@@ -10,7 +10,6 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Composition over inheritance. Inheritance only for a true is-a with shared invariants.
 - Ports and adapters for every external service (model vendor, broker, Google API, network fetch, clock, filesystem watcher): core depends on a port; the adapter is the only code that imports the vendor SDK. Tests use a fake behind the port; nothing in tests reaches the network.
 - Inject `now` and every fetcher/transport as a parameter wherever time or I/O matters. Staleness derives from the data (e.g. the session of the bars), not from when the job runs.
-- One typed API module holds behavior; CLI, MCP, pages and skill are thin surfaces over it (see Surfaces).
 - Put a seam at the stage that already owns the concern so choices do not leak downstream. Build an integration standalone (imports no pipeline module, opt-in runner), live-test it, then wire it in.
 - Design-doc principles are each enforced by named code, not convention. A module map lists what each module owns and must never import, marking the load-bearing constraints.
 - One computation, one function: decision and display, simulation and live, share the same helper verbatim so they cannot drift; derive one stream from another rather than letting two agree independently (audio sized from the video frames actually emitted).
@@ -112,7 +111,6 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Never hand-edit state or write ad-hoc scripts that bypass validation/fingerprints (no one-off backfills, no hand-dumped fingerprints, no `ps`/`stat` polling loops). Use the verb (`approve --set`, `status --why`, `verify`); add the verb if missing.
 - A file a person curates is theirs: tools append/increment, never rewrite an entry a person touched. Exported notes carry a marker; unmarked files are never touched. Cross-run knowledge: small committed JSON/JSONL.
 
-
 ### Where `.env` lives (Ruled 2026-10-03)
 `.env` may live outside the checkout, and several repos may share one. Config never moves.
 - **One override per repo.** A repo reads the checkout's `.env` unless `<REPO>_ENV` (e.g. `YTLM_ENV`, `BEELM_ENV`) names another file by absolute path. Every repo supports it, in the one function that finds `.env` (`paths.env_path()`).
@@ -121,6 +119,7 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - **`doctor` says which file.** It reports the `.env` path it read and whether `<REPO>_ENV` chose it.
 - **Config stays in the repo.** `config.toml` (or YAML) always lives in the checkout. No environment variable moves it, because config is never shared. To keep a repo's config private, gitignore it and check in `config.example.toml`.
 - **No other environment switches.** No environment variable turns on a test fake, silences a side effect or redirects a file. Tests inject fakes in-process: a module attribute that defaults to `None` and is set with `monkeypatch`. A variable left exported in a shell, a plist or `.mcp.json` must not change what a real run does. Vendor keys, workspace and database pointers, and spend gates are the only environment variables a repo reads.
+
 ### Storage and migrations
 - SQLite catalog + FTS + artifact files: each artifact row points at its file with a hash; staleness is byte comparison; attachments stored once by content hash with path, MIME type, origin; nothing copied, large artifacts referenced by tag and hash. Tables share a base (id, version, created_at, created_by, schema_version, metadata); history rows immutable.
 - A configuration entity is an immutable row with a content-derived, type-prefixed id (`stg_…`) over canonical params; editing points to a new row; every result references it.
@@ -157,7 +156,7 @@ When two or more repos hold the same kind of data (ytlm and beelm: transcripts f
 - Agents will not run, without first printing the exact SQL and getting the owner's confirmation in chat: `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, `ALTER TABLE … DROP COLUMN`, or `DELETE`/`UPDATE` without a targeted `WHERE`. This covers resetting test fixtures and dropping obsolete columns too.
 - Analytical questions and query experiments use read-only access (`sqlite3 -readonly`, a read-only Postgres role), never the app's write credentials.
 
-### State Files: One Bag of Attributes per Subject
+### State files: one bag of attributes per subject (Ruled 2026-10-02)
 A state file is a bag of attributes, named for the one subject that gives its attributes their relevance. A subject is either:
 - **a consumer**: the attributes matter because one thing acts on them (`youtube.json` holds everything the YouTube upload needs: the title and description it sends, plus the video ID, comment ID and what it last applied); or
 - **a noun**: the attributes describe one thing (`episode.json` the source material and how it was produced, `transcript.json`, `cutaways.json`, `wrap.json`).
@@ -169,11 +168,6 @@ Rules:
 - **One writer per attribute.** Every attribute has exactly one writer, a named stage or command. Decisions and recorded results may share a file when their writers differ.
 - **Configuration is never state.** Desired behaviour across runs lives in configuration and is never stored in a state file.
 - Document each state file as a table: attribute → writer → meaning. JSON, schema-validated, written atomically; structured fields (enums, numbers), never prose. Configuration is TOML (YAML where a repo already uses it), git-tracked, strictly validated. Wanting to hand-edit state means a verb is missing.
-
-(Ruled 2026-10-02.)
-
-### Settings Always Come With Their Location
-Whenever a setting, flag, pin, or configuration value is mentioned in anything written for the owner, name where it lives and link to it: the file path (with a line number when it is code) for an existing setting, or the file it *would* live in, marked "proposed, does not exist yet", for one not yet built. A setting named without its location is an incomplete sentence. (Ruled 2026-09-25.)
 
 ## Surfaces
 - One typed API module holds behavior. CLI, MCP, pages and skill are thin surfaces with a parity test (every API verb reachable on each surface it claims; adding a verb updates the test's expected list).
@@ -194,7 +188,6 @@ Whenever a setting, flag, pin, or configuration value is mentioned in anything w
 - Every POST passes one write check: `Content-Type: application/json`, header `X-<App>: 1`, Origin (if sent) equals Host, body ≤64 KB JSON object (403/415/413/400); never answer OPTIONS; no CORS, cookies or tokens; removals are POSTs, not DELETEs. Errors: `ValueError` → 400 with message; missing id → 404; else 500 naming only the exception type; unknown/malformed ids get a 404/400 page in the house look. A vendored library is one same-origin static file under `/static` with its NOTICE untouched and attribution shown; traversal is the house 404.
 - Absence is data: each kind of absence says its own sentence, never a zero; a missing field is an em dash. Error reasons map to one phrase each from one table. Explicit empty states ("No signals waiting" plus when they arrive). While a request is out its buttons are disabled; the answer becomes text on the card; a 400/404 shows near the controls and never clears what is drawn.
 - Preview edits save nothing server-side; display choices persist per browser in versioned `localStorage` keys (`app.thing.v1.<id>`); a throwing `localStorage` leaves the page working.
-- `tools/` script when a one-off is enough.
 
 ### Reuse loop
 - Run `/harvest-tools` at session end and whenever the same ad-hoc script runs a second time. Grep existing scripts before writing one; extend rather than duplicate.
@@ -241,11 +234,8 @@ Whenever a setting, flag, pin, or configuration value is mentioned in anything w
 - Agents/skills load at session start; testing a new one needs a new session. A skill missing from the listing can be followed by reading `~/.claude/skills/<name>/SKILL.md`. A globally installed skill runs commands from its home repo. A missing repo-defined agent type: launch `general-purpose` with the agent file's body as the prompt. Never route repo docs through a global skill whose hardcoded path is machine-specific; open the in-repo folder.
 - Sandboxed Bash lacks model keys and the `claude` CLI; key-needing commands run in the owner's terminal. Tailscale commands run unsandboxed.
 - Commands that read stdin run with `< /dev/null`; long commands (>3 min) run in the background with a long timeout.
-- The desktop Browser pane blocks local fetch-based pages (`ERR_BLOCKED_BY_CLIENT`); test them in Chrome via `mcp__claude-in-chrome__*`, or a headless jsdom harness.
-- Unattended scheduled tasks stall on permission prompts: allow-list exact commands in `.claude/settings.local.json`; check the task's last run first when something "did not go through". Local scheduled tasks run only while the app is open and the Mac awake.
 - Run heavy installs sequentially; check resources after heavy steps. Editable installs point at the main checkout: a worktree agent sets `PYTHONPATH=<worktree>/src`.
 - Claude takes no audio input: ask over metrics plus a transcript excerpt.
-- Use `gh` for all issue/PR work; repo inferred from `git remote -v`.
 
 ## LLM calls
 - Deterministic first: anything measurable (string matching, quote checks, test runs, bookkeeping) is tested code. Ask the model only the question code cannot answer, never "here is the file, find problems". Scope attention by the diff but feed the whole changed files and full local context: culling bounds what may be concluded, never what may be read.
@@ -287,7 +277,6 @@ Tested reference: `examples/jev-decision/`.
 - Agents never edit CI config, `CLAUDE.md`, `AGENTS.md`, `.claude/`, secrets or `.env` unless the owner asks in chat.
 - Install dependencies only inside the repo env, never globally. Prefer pip/npm over Homebrew on this Mac.
 - Never commit with `--no-verify`; a broken hook is a finding. Pre-commit blocks large media outside allowed folders (gitignore is advisory).
-- `tailscale serve` changes exposure: only on the owner's word (operations.md).
 - Gitignore machine-specific settings (`.claude/settings.local.json`) and scratch/generated output. Never put a secret in a permission allow-list.
 
 ## Repo hygiene

@@ -13,6 +13,7 @@ Engineering rules for the `*lm` repos, plus the skill that brings a repo into li
 | `guidelines/operations.md` | Served apps, launch agents, Tailscale, sandboxes |
 | `guidelines/scheduling.md` | Scheduled and unattended work: launchd jobs, local scheduled tasks, cloud routines |
 | `guidelines/install-scripts.md` | How install scripts behave |
+| `src/metalm_gendocs/`, `.pre-commit-hooks.yaml` | The `metalm-gendocs` pre-commit hook: generates `docs/generated/` from code |
 | `examples/` | Tested reference code cited by guidelines |
 | `skills/metalm-setup/` | "Set up a repo" / "make the repo compliant with guidelines" |
 | `docs/` | metalm's own requirements and design |

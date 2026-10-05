@@ -16,7 +16,7 @@ Scope: what a repo's requirements are (CUJs generated from code), how to write a
 - Outcome is what the actor can observe, with numbers and units where they matter ("within 2 s", "at most 20 hits").
 - Every core path has a CUJ: money, deletion, persistence, access, user data, time (expiry, schedules).
 - The test asserts what the CUJ says, through the surface it names. A CUJ whose test checks something else is a defect.
-- Group by area: the generator sorts CUJs under the area of the test's file.
+- The generator groups CUJs by test file; keep a journey's tests in the file for its area.
 
 Banned words in a CUJ (replace with a number, a named actor, or a list):
 - Vague: adequate, appropriate, sufficient, efficient, reasonable, flexible, easy, effective, normal, timely, some, several, many, about.

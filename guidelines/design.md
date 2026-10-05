@@ -38,7 +38,7 @@ Terms:
 ## Generated docs
 - Every repo generates its docs from code into `docs/generated/`, committed to git; nobody edits them by hand. (owner)
 - Files: `index.md` (every area: name, paragraph one, never-imports), `decisions.md` (every `(owner)` rule with its package), `glossary.md` (every `Terms:` entry), `cujs.md` (every CUJ with the test that proves it; requirements.md). Plus the language's API reference where its generator writes Markdown.
-- Generators: Python, metalm's `metalm-gendocs` pre-commit hook (reads docstrings and markers with `ast`, imports nothing; proposed, does not exist yet: metalm `.pre-commit-hooks.yaml`). Node/TS: TypeDoc with `typedoc-plugin-markdown`. Swift: DocC. Go, Rust: `go doc`, `rustdoc`. Each language also runs the metalm extractor for decisions, terms and CUJs.
+- Generators: Python, metalm's `metalm-gendocs` pre-commit hook (`.pre-commit-hooks.yaml`, `src/metalm_gendocs/`; reads docstrings and markers with `ast`, imports nothing; `metalm-gendocs --check` for the staleness test; config `[tool.metalm-gendocs]` keys `src`, `tests`, `out`). Node/TS: TypeDoc with `typedoc-plugin-markdown`. Swift: DocC. Go, Rust: `go doc`, `rustdoc`. The metalm extractor reads Python only so far; other languages get it when a repo needs it.
 - Three layers keep them current with no step from the owner (owner):
   1. Pre-commit hook regenerates on every commit that changes code; when files changed the commit stops; add them and commit again.
   2. GitHub Action on every PR runs the hooks and pushes a regenerated commit to the PR branch.

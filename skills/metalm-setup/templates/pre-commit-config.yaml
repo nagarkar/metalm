@@ -13,7 +13,7 @@ repos:
       - id: ruff
       - id: ruff-format
   - repo: https://github.com/nagarkar/metalm
-    rev: <tag>   # metalm-gendocs: proposed, does not exist yet
+    rev: <tag>   # the owner tags metalm releases (first: v0.1.0); until then pin a main commit SHA
     hooks:
       - id: metalm-gendocs   # regenerates docs/generated/; stops the commit when it changed files
   - repo: local

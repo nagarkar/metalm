@@ -29,10 +29,10 @@ Scope: served apps on this Mac, their servers and launch agents, scheduled and u
 
 ## Launch agents
 - The real server runs under a launch agent: starts at login, restarts if it dies, logs to `~/.<app>/logs/serve.log`.
-- The plist template lives in the repo under `scripts/` (e.g. tradelm `scripts/com.nagarkar.tradelm.serve.plist`); the installed copy in `~/Library/LaunchAgents/` is machine-specific and not committed.
+- The plist template lives in the repo under `scripts/` (`scripts/com.nagarkar.<app>.serve.plist`); the installed copy in `~/Library/LaunchAgents/` is machine-specific and not committed.
 - The owner installs launch agents. Claude Code will not add anything that starts at login; print the install command instead.
 - Restart only with `launchctl kickstart -k gui/501/com.nagarkar.<app>.serve`, allowed for that one command in the repo's `.claude/settings.local.json`.
-- launchd wins over `nohup`. Never start a server detached with `nohup` (superseded: tradelm SKILL `/health` fallback, supplylm `nohup ./supplylm.sh app`).
+- launchd wins over `nohup`. Never start a server detached with `nohup`, not even as a fallback when `/health` fails.
 - An app without a launch agent yet: ask the owner to install one before relying on restarts. Until then ask the owner to restart the server; do not start or stop it yourself.
 
 ## After every change that touches an app's pages
@@ -45,14 +45,14 @@ Scope: served apps on this Mac, their servers and launch agents, scheduled and u
 - Never report a change as visible until the real server has been restarted onto it and checked.
 
 ## Sandbox script
-- Every served app has one: `scripts/sandbox_server.sh [port]` (tradelm has it; for others, proposed, does not exist yet).
-- It starts a throwaway server on a spare port (tradelm default 9450) and declines the real port.
+- Every served app has one: `scripts/sandbox_server.sh [port]`.
+- It starts a throwaway server on a spare port and declines the real port.
 - Each start makes a fresh copy of the app's data outside the real data directory (declines a path inside it). Copy SQLite with `sqlite3 … ".backup"` so it is consistent while the real server runs.
 - It strips credentials that act outside the Mac (brokers, email, payments) from the environment, so nothing tapped in the sandbox reaches anywhere.
 - Change anything there; stop it when done. Its state is lost on next start.
 
 ## Boundaries
-- No second server against an app's real data, ever. Two code versions on one database overwrite each other's caches (tradelm, 2026-09-30: the owner's server stayed on morning code and saw none of the changes).
+- No second server against an app's real data, ever. Two code versions on one database overwrite each other's caches, and the owner's server keeps showing the old code.
 - Never kill the real server's process by hand.
 - Never run `tailscale serve` without the owner's word.
 - Keep an old surface (and its scheduled sync) running until the new one has carried a real session.
@@ -71,7 +71,7 @@ Decide in this order:
 - Never put money, orders or data pipelines behind an LLM run: same input must give the same output.
 
 ## launchd job safeguards (Ruled 2026-10-03)
-Every launchd job script (example: tradelm `scripts/nightly.sh`):
+Every launchd job script (e.g. `scripts/nightly.sh`):
 - **Holds the Mac awake while it runs:** re-execs itself under `caffeinate -i -s` once (guard with an env var), so a short sleep timer cannot stop it halfway.
 - **Is woken for:** a sleeping Mac does not run it on time (launchd fires it on wake, late). The owner sets a wake a few minutes before (`sudo pmset repeat wakeorpoweron MTWRFSU <HH:MM:SS>`); Claude Code leaves system settings alone and prints the command.
 - **Alerts on failure only:** each step goes through a `step` helper that logs its exit code and records a failure; an `EXIT` trap sends one notification naming the failed steps, and names "the run itself" when the run was cut short. A clean run is silent (an alert every night is ignored). The notifier path is overridable by env var so tests can stub it.
@@ -79,7 +79,7 @@ Every launchd job script (example: tradelm `scripts/nightly.sh`):
 - **Long verbs announce their end:** every *lm CLI has a `notify` module (podlm `core/notify.py`, ytlm `notify.py`, gamelm `core/notify.py`) called from the one place every verb passes through. A verb that ran 60 s or longer sends one banner when it ends, ok or failed: title "<verb> <scope>", body "done in 12m 05s" or "FAILED after 3m 10s: <why>". Quick verbs, Ctrl-C and long-lived servers stay silent. The send is in the background and never fails a verb. `<REPO>_NOTIFY=0` turns it off and the test suite sets it for every test; `<REPO>_NOTIFY_CMD` points it at a stub. A repo whose output rules keep content out (ytlm D19) says only the verb, duration and exit code. (Ruled 2026-10-03.)
 - **Treats "not configured" as a skip, not a failure:** a step whose setup is missing on this machine (e.g. a Sheets token) logs `skipped: …` and exits 0, so it never trips the alert.
 - **Cannot report a run that never started:** the app's page shows "last successful run" from the run rows; that is the check for a missed night.
-- **Checks its machine setup first:** the repo's `doctor` verb checks every owner-run step no code installs (its launch agents loaded, a daily wake 1–30 min before each launchd job's plist hour, the real server answering, `tailscale serve` fronting its port) and prints the fixing command for each miss; exit 1 on any fail. The job runs `doctor` as its first step, so a missing piece reaches that night's failure notification. Read the job's hour from its plist, never a second copy of it. (tradelm `tradelm doctor`; others proposed, does not exist yet.)
+- **Checks its machine setup first:** the repo's `doctor` verb checks every owner-run step no code installs (its launch agents loaded, a daily wake 1–30 min before each launchd job's plist hour, the real server answering, `tailscale serve` fronting its port) and prints the fixing command for each miss; exit 1 on any fail. The job runs `doctor` as its first step, so a missing piece reaches that night's failure notification. Read the job's hour from its plist, never a second copy of it.
 - **Is tested with stub commands:** run a copy of the script in a stand-in repo whose commands are stubs (clean run silent, failures named once and the rest still run, a killed run says so). Never test by running the real job.
 
 ## Scheduled job checklists (Ruled 2026-10-03)

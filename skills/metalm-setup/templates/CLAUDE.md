@@ -9,10 +9,12 @@
 - Test: `<command>`
 - Lint: `<command>`
 - CLI: `<launcher> <verb>`; see `.claude/skills/<repo>/SKILL.md`.
+- Docs: `docs/generated/index.md` (areas, `(owner)` decisions, glossary, CUJs); generated, never edited.
+- Hooks: `pre-commit install` once per checkout.
 
 ## Repo notes
 
-- Documented exceptions to metalm, each linking the design doc that decides it.
+- Exceptions to metalm: each is an `(owner)` rule in the package docstring (or `docs/design/`) that decides it.
 
 ## Agent skills
 

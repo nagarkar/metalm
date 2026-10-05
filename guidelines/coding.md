@@ -11,7 +11,7 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Ports and adapters for every external service (model vendor, broker, Google API, network fetch, clock, filesystem watcher): core depends on a port; the adapter is the only code that imports the vendor SDK. Tests use a fake behind the port; nothing in tests reaches the network.
 - Inject `now` and every fetcher/transport as a parameter wherever time or I/O matters. Staleness derives from the data (e.g. the session of the bars), not from when the job runs.
 - Put a seam at the stage that already owns the concern so choices do not leak downstream. Build an integration standalone (imports no pipeline module, opt-in runner), live-test it, then wire it in.
-- Design-doc principles are each enforced by named code, not convention. A module map lists what each module owns and must never import, marking the load-bearing constraints.
+- Design principles are each enforced by named code, not convention. The module map is an import contract where the ecosystem has one (design.md#the-package-docstring).
 - One computation, one function: decision and display, simulation and live, share the same helper verbatim so they cannot drift; derive one stream from another rather than letting two agree independently (audio sized from the video frames actually emitted).
 - Data contracts use the producer's vocabulary (what a value is, not where it goes); the consumer binds/maps it; rendering logic never leaks into data. Data defects are reported upstream, never papered over in a mapping.
 - Similarity/dedupe compares only what distinguishes two rows (shared boilerplate inflated scores 8.0% → 22.5%).
@@ -92,7 +92,7 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 
 ### Layout
 - Python 3.12, `.venv` with pip, `pyproject.toml` with pytest and ruff; `AGENTS.md` and the repo skill from day one; page assets as package data. `src/<pkg>/` is the reusable library; the owner's own data/scripts live in `analysis/`, which package code never reads.
-- `src/<pkg>/` typed API core; `src/<pkg>/cli.py`, `mcp.py`, `server.py` thin surfaces; `src/<pkg>/prompts/` versioned prompts; `tools/` one-off scripts (see Surfaces); `tests/`; `docs/design/`, `docs/requirements/`.
+- `src/<pkg>/` typed API core; `src/<pkg>/cli.py`, `mcp.py`, `server.py` thin surfaces; `src/<pkg>/prompts/` versioned prompts; `tools/` one-off scripts (see Surfaces); `tests/`; `docs/generated/` (generated, design.md); `.pre-commit-config.yaml`; `.github/workflows/docs.yml`.
 - Non-Python package files read at runtime are declared in packaging (`[tool.setuptools.package-data]` in `pyproject.toml`); editable installs hide the gap, wheels omit the files.
 - Heavy dependencies behind optional extras (`pip install -e ".[dev]"`, `.[stt]`). Core works offline without a model or network where the product allows.
 - One network step (plus model calls); everything else offline. `doctor` is the gate: checks the environment and every bind; each missing item (download, asset, key) says what it is, what breaks and how to get it (exact fetch command); never substitutes a placeholder. Run it on a new machine and after any dependency, font or config change.
@@ -131,7 +131,7 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 
 ### Major migrations and multi-step refactors (Ruled 2026-10-03)
 The additive rule is the default and nothing is ever dropped silently. A major change is a special case: a non-additive migration (rename, split, merge, type or key change, moving or merging database files) or a refactor that spans several PRs or repos (e.g. extracting a shared core package).
-- **Grill the owner first.** The owner is the product manager. Run `/grilling` before any code: one question at a time with a recommendation, covering why now, what each consumer loses or gains, the order of steps, the rollback, acceptable downtime and what "done" means. The outcome is a design doc (or a dated Changes entry) with numbered steps, ratified before step 1.
+- **Grill the owner first.** The owner is the product manager. Run `/grilling` before any code: one question at a time with a recommendation, covering why now, what each consumer loses or gains, the order of steps, the rollback, acceptable downtime and what "done" means. The outcome is one parent issue with numbered steps, approved by the owner before step 1.
 - **Expand, migrate, contract.** Expand: add the new names, tables or views beside the old ones. Migrate: move readers, then writers, to the new names, one PR at a time. Contract: remove the old names only after every consumer has moved. Each step leaves every consumer working and every suite green.
 - **Each step states:** the exact SQL or move commands, the backup command, a verification query (row counts and key sums before and after must match), and the rollback.
 - **Dry-run on a copy.** Run the step against a `.backup` copy in a scratch file and show the verification output before touching the live file.
@@ -273,7 +273,7 @@ Tested reference: `examples/jev-decision/`.
 - Copy secrets between `.env` files by script, never displayed.
 - OAuth client secret files stay out of git.
 - Validate all outside input (files, network, users, model output) before it touches state; identifiers by regex so markup never becomes stored data or a provider request. No shell or SQL built from unvalidated strings; no unsafe deserialization; guard path traversal.
-- Hooks and login items execute code: tools never install them; print the snippet for the owner to paste.
+- Hooks and login items execute code. The first `.pre-commit-config.yaml` in a repo, and any new or changed hook, needs the owner's approval; once committed, agents run `pre-commit install` in any checkout of that repo without asking. (owner) Login items: print the snippet for the owner.
 - Agents never edit CI config, `CLAUDE.md`, `AGENTS.md`, `.claude/`, secrets or `.env` unless the owner asks in chat.
 - Install dependencies only inside the repo env, never globally. Prefer pip/npm over Homebrew on this Mac.
 - Never commit with `--no-verify`; a broken hook is a finding. Pre-commit blocks large media outside allowed folders (gitignore is advisory).

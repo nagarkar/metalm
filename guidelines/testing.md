@@ -23,9 +23,9 @@ A test exists to fail when behaviour a user relies on breaks. A test that cannot
 - Exception: a test-only PR covering a gap must pass on current code; it never edits non-test code. A gap whose test would fail is a bug and goes with a code fix.
 
 (b) **Expected values come from the spec, not the code.**
-- Each test cites its source: requirement ID (`ORD-3`), incident (date + failure, in the module docstring), or design decision (doc name).
+- Each test cites its source: the CUJ it proves (`cuj` marker), an incident (date + failure, in the module docstring), or the `(owner)` rule it enforces.
 - Derive the expected value independently (by hand, a reference engine, a worked example), then check the code agrees. Never paste the code's current output as the expectation. Real dated scenarios become fixtures. Reference samples are oracle and regression target, never input (never infer layout or behaviour from them).
-- First capture of a golden/snapshot file needs owner review or a ratified doc that pins it.
+- First capture of a golden/snapshot file needs owner review or an `(owner)` rule that pins it.
 - Changing an existing assertion cites the requirement change that justifies it.
 
 (c) **Blind test-writer for core paths only** (money, deletion, persistence, auth, user data): a subagent that sees the requirement and the public interface, not the implementation, writes the tests.
@@ -54,7 +54,9 @@ Priority when choosing what to add: core path with no test; error path never exe
 | Schema-vs-doc | documented schemas | fails if the doc's schema differs from code DDL |
 | Graph-vs-code drift | dependency graphs | build order equals declared graph; every built node declared; every shipped node has a builder; edge × change-kind table |
 | Config mutation | config loaders | each key set to wrong type/unknown value → rejection naming the key |
-| End-to-end | one journey through the API | through the API hand-off, fake externals, no network |
+| End-to-end | one journey through the API | through the API hand-off, fake externals, no network; carries the `cuj` marker naming the journey (requirements.md) |
+| Generated docs | `docs/generated/` | regenerating changes nothing; fails naming the stale file (design.md#generated-docs) |
+| Import contract | module map | `lint-imports` (import-linter) or `depcruise` passes; runs in the default suite |
 | Live smoke | real service contract | one module behind an env flag, never in the default suite |
 
 Tripwire/policy examples worth copying:

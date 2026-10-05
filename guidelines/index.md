@@ -1,14 +1,14 @@
 # metalm index
 
 Status: DRAFT — not yet ratified by the owner.
-Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill defaults. A repo's documented exception (in its `docs/design/`) beats these.
+Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill defaults. A repo's documented exception (an `(owner)` rule in its code or `docs/design/`) beats these.
 
 ## Read before acting
 
 | When you are about to… | Read `~/.claude/metalm/guidelines/` |
 |---|---|
-| write or change requirements, or file a work item | `requirements.md` |
-| write or change a design doc or diagram | `design.md` |
+| write a CUJ or its test, file a work item, or record an owner ruling | `requirements.md` |
+| record a design decision, write a package docstring, generated docs, or a diagram | `design.md` |
 | design or review structure: principles, patterns, concurrency, state machines, database choice and schema | `architecture.md` |
 | write SQL, a migration, or query a database | `coding.md#storage-and-migrations` |
 | plan a non-additive migration or a refactor spanning several PRs or repos | `coding.md#major-migrations-and-multi-step-refactors-ruled-2026-10-03` |
@@ -26,22 +26,22 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 ## Repo layout
 
 - `CLAUDE.md` is the one loaded file; `AGENTS.md` is a symlink to it.
-- `docs/requirements/<area>.md`: what the system must do; persistent, edited in place. `docs/design/<area>.md`: decisions with **Why:** and **Rules out:**; DRAFT until the owner ratifies. Both have a `README.md` index and dated `## Changes`.
-- Work items are GitHub issues (`gh`, private repo). Issues are transient deltas; the markdown is the truth.
-- Never create `CONTEXT.md`, `docs/adr/`, `.scratch/`, or a numbered decision log.
-- Skills that say `CONTEXT.md` mean `docs/design/glossary.md`. Skills that say ADR or `docs/adr/` mean the named doc under `docs/design/` (add the decision there, dated Changes line). "Publish to the issue tracker" = create a GitHub issue; "fetch the ticket" = `gh issue view <n> --comments`.
+- The code is the design and the requirements (owner): area docs are package docstrings; decisions that span modules are inline rules marked `(owner)`, one answer per question, no dates or history (git keeps it); CUJs are markers on e2e tests. All of it is generated into `docs/generated/` (committed; never hand-edited). `docs/design/` only for decisions no code owns. Details: `design.md`, `requirements.md`.
+- Work items are GitHub issues (`gh`). Issues are transient deltas; the code is the truth.
+- Never create `CONTEXT.md`, `docs/adr/`, `docs/requirements/`, `.scratch/`, `backlog.md`, or a numbered decision log.
+- Skills that say `CONTEXT.md` mean `docs/generated/glossary.md` (write terms in the owning package docstring). Skills that say ADR mean an `(owner)` rule in the owning package docstring. "Publish to the issue tracker" = create a GitHub issue; "fetch the ticket" = `gh issue view <n> --comments`.
 - "Set up a repo" / "make the repo compliant with guidelines" → `metalm-setup` skill.
 
 ## Session
 
-- Start: read the design docs for the area and run the repo's `doctor`/status verb; do not redo design or scaffolding. One session per working directory.
+- Start: read `docs/generated/index.md` and the area's package docstring, and run the repo's `doctor`/status verb; do not redo design or scaffolding. One session per working directory.
 - Token order: fewest turns > fewest output tokens > least uncached input > cached input. Terse replies; `Edit`, not full rewrites; never echo files; subagents for wide searches.
 - End: run `/harvest-tools`; also whenever the same ad-hoc script runs a second time.
 
 ## Git and work items
 
-- Branch for every change; never commit to `main`. Push `main`, force-push, or merge only on the owner's word in chat; record such authorizations with date and issue number.
-- One PR per change. Automation opens PRs; it never merges, approves, or closes them.
+- Branch for every change; never commit to `main` (the pre-commit hook `no-commit-to-branch` enforces it). Push `main`, force-push, or merge only on the owner's word in chat; record such authorizations with date and issue number.
+- One PR per change. Automation opens PRs; it never merges, approves, or closes them, except a commit or PR that changes only `docs/generated/`, which agents may merge. (owner)
 - Commit after each completed step. Subject: one sentence of behavior change + `(#<issue>)`; `Closes #N` where it finishes.
 - `git status` before assuming a change landed. Never commit over the owner's uncommitted work.
 - Defects: structured report (evidence file:line, given/observed/expected, owner verdict verbatim), filed only on the owner's confirmation; issue first (records commit + data version), fix second. Mention a filed defect once; keep the defect queue out of domain briefings.
@@ -54,7 +54,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 - A multi-step instruction is one instruction: carry it end to end. Offer follow-ups; do not run them unasked.
 - Never approve a gate, answer a review item, tag a release, or send anything to a vendor on the owner's behalf. Never present an automated pick as the owner's.
 - Ask before any spend on a paid service, stating the cost. Nothing public without approval in chat. Show dry-run output before `--yes`. Never run an irreversible "accept all" (e.g. `resolve --all`) unless asked, and then only for what was named.
-- When a rule blocks you, say so; do not work around it. Flag contradictions with a ratified decision; never override silently.
+- When a rule blocks you, say so; do not work around it. Flag contradictions with an `(owner)` rule; never override silently.
 - Leave system settings to the owner.
 
 ## Owner data
@@ -67,12 +67,12 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 
 - Every setting, flag, pin or config value named comes with its location: file path (line for code), or "proposed, does not exist yet" + the file it would live in; also its default, and whether the file is global or per-unit. (Ruled 2026-09-25.)
 - Terse. Lead with the action; report outcomes, not effort. Plain words, not pipeline jargon. No pasted JSON or old/new text in chat. Summaries 3–5 bullets; no long walkthroughs unless asked. Report in prose per unit (staged, written, left out, skipped). After tool output, state the next action it implies; do not stop at status.
-- Quote owner rulings with their date: "(Ruled YYYY-MM-DD)".
+- Mark owner rulings `(owner)` where they are written down; no date.
 - Every review ask carries a phone-ready page link.
 - Surface warnings, conflicts and open questions unprompted.
 
 ## Memory
 
 - Memory notes carry **Why:**, **How to apply:**, `[[links]]`; `MEMORY.md` is a one-line index.
-- Decisions and rules belong in `docs/design/` or metalm, not memory; move them and delete the note. Correct or delete superseded notes.
+- Decisions and rules belong in the code (package docstrings) or metalm, not memory; move them and delete the note. Correct or delete superseded notes.
 - Before recording a lesson, check it is not already done (`git log`, code).

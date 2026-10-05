@@ -1,140 +1,58 @@
 # Requirements
 
-Status: DRAFT — not yet ratified by the owner.
-Scope: where requirements live, how to write and check them, how to trace them to design and code, how to capture owner input.
+Status: DRAFT — not yet ratified by the owner. Rules marked `(owner)` are the owner's.
+Scope: what a repo's requirements are (CUJs generated from code), how to write a CUJ, work items, checking docs against code, and capturing owner input.
 
-## Where requirements live
+## CUJs are generated from the code
+- A repo's requirements are the critical user journeys (CUJs) its code supports, generated into `docs/generated/cujs.md` (design.md#generated-docs). The code is primary; no hand-written file says what the system does. (owner)
+- A CUJ is declared on the end-to-end test that proves it. Python: `@pytest.mark.cuj("<journey>")`, the marker registered in `pyproject.toml`. Other languages: a tag the metalm extractor reads (TypeScript `// cuj: <journey>` above the test; Swift a `.tags(.cuj)` trait plus the journey as the test's display name). A journey with no test does not appear. (owner)
+- Wanted or planned behavior is a GitHub issue whose acceptance criteria are written as CUJs; it becomes a generated CUJ when its test lands.
+- `docs/requirements/` does not exist in a repo; this file is the guidance for writing CUJs. (owner)
+- Bugs, exploration and one-offs live only in issues. Closed issues are never the truth.
 
-| Kind | Home | View | Lifetime |
-|---|---|---|---|
-| What the system must do (lasting behavior) | `docs/requirements/<area>.md` | full, current | persistent; edited in place |
-| Why it is built that way | `docs/design/<area>.md` (see `design.md`) | full, current | persistent |
-| One change, bug, exploration, one-off | GitHub issue | partial delta | transient; closed when done |
+## Writing a CUJ
+- One journey per marker, in this shape: "<Actor> <does what> via <surface>, and sees <outcome>." Add the failure the journey promises: "If <failure>, they see <message>."
+- Actor is named (the owner, a reviewer on a phone, the nightly job). Surface is its real name (`ytlm corpus add`, `/approvals`, the review page).
+- Outcome is what the actor can observe, with numbers and units where they matter ("within 2 s", "at most 20 hits").
+- Every core path has a CUJ: money, deletion, persistence, access, user data, time (expiry, schedules).
+- The test asserts what the CUJ says, through the surface it names. A CUJ whose test checks something else is a defect.
+- Group by area: the generator sorts CUJs under the area of the test's file.
 
-- One requirements file per area, mirroring `docs/design/`. Index: `docs/requirements/README.md`.
-- Requirements say WHAT; design docs say WHY and HOW. A requirement cites the design decision that realizes it.
-- Issues cite the requirement IDs they change or satisfy. Closed issues are never the truth.
-- A PR that changes lasting behavior updates the requirement file in the same PR.
-- Bugs, exploration and one-offs live only in issues; they never enter `docs/requirements/`.
-- Feature ideas go through grilling → design doc → requirement. Only a defect with a verifiable repro goes straight to an issue.
-- Doc-light repo: propose one derived requirements file; each behavior a numbered requirement citing the file it comes from, marked "derived from <file>; owner to confirm". One document per PR.
-
-From the global "Repository Layout for Design and Work Items" rule (Ruled 2026-10-02):
-- Decisions live in named design documents under `docs/design/`, listed in `docs/design/README.md`. No numbered decision log, no `docs/adr/`, no `CONTEXT.md`.
-- A design is ratified as a design document (drafted as DRAFT in `docs/design/<name>.md`) before work items are cut. Then write the PRD and issues.
-- Work items are GitHub issues via `gh`, on a private repository. No `.scratch/`, no issue files in the tree. A repo without a remote gets a private GitHub repo first. `docs/agents/issue-tracker.md` says GitHub.
-- Code quality review: built-in `/code-review`. The Matt Pocock `review` skill is used only for its spec axis (does the diff do what the issue asked).
-
-## File template
-
-```markdown
-# <Area> requirements
-Owner: <name> · Updated: <YYYY-MM-DD> · Status: DRAFT | ratified
-Nothing here is built unless the status table says so.
-
-## Purpose
-<2–4 lines: who uses this, the loop they live, what must hold; budget context (volume, acceptable $/month).>
-
-## Requirements
-- **ORD-1** The system MUST <behavior> within <number unit> when <condition>. (Design: `docs/design/orders.md#approval`)
-- **ORD-2** ...
-- ~~**ORD-3** ...~~ Retired 2026-10-03: <reason>.
-
-## Boundaries (what this area leaves alone)
-- <Out of scope item> — <reason>. Do not resurrect without new evidence.
-
-## Status against these requirements
-| ID | Built? | Where |
-|---|---|---|
-
-## Open questions
-- <Question> — data that bears on it; current default stands until answered.
-
-## Done when
-- <Concrete, checkable acceptance test.>
-
-## Changes
-- 2026-10-03: <what changed, why, owner quote if a ruling>.
-```
-
-- Edit in place. Every change adds a dated line under `## Changes`.
-- Every setting named gives its location (file path), or "proposed, does not exist yet" plus the file it would live in.
-
-## IDs
-
-- Format `<AREA>-<n>` (e.g. `ORD-3`). Area code is short, uppercase, unique per repo.
-- Never reuse an ID. Retire by striking through with date and reason; keep the line.
-- One ID defines one thing. Duplicate IDs and `TBD`s are always defects; report them.
-
-## Normative language
-
-- RFC 2119/8174: only capitalized MUST / MUST NOT / SHOULD / SHOULD NOT / MAY carry force.
-- Core behavior (user data, money, access, time) uses MUST. Never state a core behavior as SHOULD/MAY while code treats it as mandatory.
-- One requirement per bullet. No "and" joining two obligations.
-
-## Quality checklist
-
-Each requirement (ISO/IEC/IEEE 29148): necessary, appropriate, unambiguous, complete, singular, feasible, verifiable, correct, conforming.
-- Complete = carries every condition needed to check it: number, unit, time window, actor, error case.
-
-The set: complete, consistent, feasible, comprehensible, validatable.
-- Contradiction and omission are invisible line by line. Read the whole file before declaring it sound.
-
-Banned words (replace with a number, a named actor, or a list):
+Banned words in a CUJ (replace with a number, a named actor, or a list):
 - Vague: adequate, appropriate, sufficient, efficient, reasonable, flexible, easy, effective, normal, timely, some, several, many, about.
-- Escape clauses: as appropriate, as applicable, if practical, where possible, as little as possible.
+- Escape clauses: as appropriate, as applicable, if practical, where possible.
 - Open-ended: etc., and so on, including but not limited to.
-- Weak options: can, optionally, be able to; `tbd`.
-- Word lists are hints (~6 in 10 hits are real). A vague word is a defect only when two readings build two behaviors; one pinned down nearby is fine.
+- A vague word is a defect only when two readings build two behaviors; one pinned down nearby is fine.
 
-Defect priority (fix the first that applies; a precise edit to one requirement beats rewriting the doc):
-1. Two requirements that cannot both hold (quote both).
-2. A behavior on user data, money, access or time (deleting, charging, locking, expiring, sharing) no requirement covers.
-3. Ambiguity on a core path that changes what gets built.
-4. Missing condition (number, unit, actor, error case).
-5. Duplicate ID or TBD (esp. a TBD the code already depends on).
-6. Core behavior stated only as SHOULD/MAY.
+## Issues
+- Acceptance criteria: CUJ sentences, plus "Done when:" lines a test can check.
+- An issue cites the package or `(owner)` rule it changes.
+- Feature ideas that span modules or are hard to reverse go through `/grilling` first (design.md#deciding); small, reversible ones go straight to code and a test.
+- Defects: index.md (structured report, owner's confirmation, issue first).
 
-Leave alone: wording, grammar, formatting, heading style; items marked aspirational/planned/non-goal; needs you cannot show with a quote; code disagreeing with a clear requirement (that is traceability, below).
-
-Before shipping, ask "would this help someone build and test it?"; list what it does and does not resolve.
-
-## Traceability
-
-- Forward: every requirement is implemented. Backward: every behavior in code traces to a requirement (nothing unnecessary built). Check both.
-- Classify each relation: convergence (agree), divergence (code has it, docs do not), absence (docs have it, code does not).
-- Prefer exact doc-reference checks (backticked names, commands, routes, config keys exist in code) over text-similarity matching. Ignore planned features, external tools' commands, same-meaning naming, generic words.
-- Every finding quotes BOTH sides: doc text and code, or the nearest code showing absence.
-- A disagreement does not say which side is wrong. Decide in order:
-  1. Confirmed owner ruling / ratified requirement.
-  2. The more recent deliberate decision (dated `## Changes` line, ratified doc).
-  3. Behavior users already rely on.
-  4. Still unclear: fix the doc; leave behavior alone.
-- Changing code to match a doc alters behavior; it needs a governing requirement or ruling. Without one, open a draft PR labeled `needs-intent` and ask.
-- Any change to observable behavior (return values, errors, stored data, messages, timing) names the requirement ID that justifies it.
-- Priority: documented behavior the code does differently and hurts a relying user (a "safe" flag that writes, an unenforced limit); unimplemented requirement; destructive or externally visible entry point (CLI verb, route, script, config key) no doc mentions; doc naming a command/flag/key that no longer exists; data stored somewhere other than documented; a design decision the code contradicts; a requirement the design omits.
-- Leave alone: private helpers, test utilities, generated/vendored paths, work marked planned, behavior a confirmed intent/ruling marks deliberate (no review lens flags it).
-- A small, sure fix to the wrong side beats rewriting either side.
+## Checking docs against code
+Generated docs cannot disagree with the code. What can:
+- An `(owner)` rule the code contradicts.
+- A hand-written doc (`README.md`, a skill, `docs/design/`) naming a verb, flag, config key, route or page that no longer exists: check every backticked name against the code.
+- Every finding quotes both sides: the rule or doc text, and the code (or the nearest code showing the absence).
+- Which side is wrong: the `(owner)` rule wins; else the behavior users already rely on; else fix the doc and leave behavior alone. (owner)
+- Changing code to match a doc alters behavior and needs an `(owner)` rule or an issue that asks for it; without one, open a draft PR labeled `needs-intent` and ask.
+- Leave alone: private helpers, test utilities, generated or vendored paths, work an open issue marks as planned.
 
 ## Readability
-
-- Short sentences. One requirement per bullet. Plain words; glossary terms from `docs/design/glossary.md`. One word, one meaning: retire a word with two meanings and record renames in the glossary. Use glossary terms in code, issues and test names too; a missing term is invented language or a gap. Do not over-formalize a pattern that already works.
-- Settings, knobs, thresholds: one table (Knob / Where / Value). Every row filled; an empty row is a decision the owner has not been offered.
-- Show results and their baseline; do not add judgments (flags, warnings) the owner did not ask for.
+- Short sentences, plain words, glossary terms (`docs/generated/glossary.md`). One word, one meaning.
+- Settings, knobs, thresholds: one table (Knob / Where / Value), every row filled; an empty row is a decision the owner has not been offered.
+- Show results with their baseline; add no judgments (flags, warnings) the owner did not ask for.
 - No hard-coded "as of" dates in behavior; end at the latest available data.
 
 ## Capturing owner input
-
-- Record the owner's brief and rulings verbatim (minus dictation artifacts). Paraphrase destroys evidence.
-- Clean obvious transcription slips silently; flag every substantive guess.
-- Rulings carry "(Ruled <YYYY-MM-DD>)" and the owner's exact quote where wording matters. Owner-requested changes say "Why: asked for by the owner" plus the triggering question.
-- Grill one question at a time, each with a recommendation. Then a YAGNI pass. Then concrete example rows before ratifying any schema.
-- Never default silently on a choice with real consequences: ask one line, explain what each answer means.
-- Bare verdict without a reason: ask why once. If declined, record as-is. Never ask during bulk triage. Never re-ask what a ruling settled.
-- A mid-work general instruction: apply now, and in the same reply propose it as a standing rule (exact words, scope, target file), approvable with one word. Qualifies: an explicit terminology/structure ruling at once; a wording preference at two independent instances. Never ratify silently. A contradicting ruling becomes an amendment question (retire + re-add), never left to drift.
-- Record rejected options and out-of-scope requests under Boundaries with reasons and date: "do not resurrect without new evidence".
-- Open questions list the data that bears on them; current defaults stand until answered.
-- Proposals not yet agreed live in a DRAFT doc ("Not ratified; nothing here is built") ending with "Questions to settle before ratifying".
-- Owner makes every substantive judgment. Never silently mutate owner-authored content.
-- First round covers common cases without decisions that block later ones; start with the case blocking real work.
+- Record the owner's brief verbatim (minus dictation slips) in the issue. Paraphrase destroys evidence. Flag every substantive guess.
+- A ruling becomes the rule's text in its one place (design.md#where-decisions-live), marked `(owner)`, no date; the same PR deletes every older answer. (owner)
+- Grill one question at a time, each with a recommendation; then a YAGNI pass; then example rows before deciding any schema.
+- Never default silently on a choice with real consequences: ask one line, saying what each answer means.
+- A bare verdict without a reason: ask why once; if declined, record it as given. Never ask during bulk triage. Never re-ask what an `(owner)` rule settles.
+- A mid-work general instruction: apply it now, and in the same reply propose it as a standing rule (exact words, target file), approvable with one word. Qualifies: an explicit terminology or structure ruling at once; a wording preference at two independent instances. A ruling that contradicts an `(owner)` rule replaces it; never leave both.
+- Rejected options the owner wants kept out: an `(owner)` rule "<X> is out of bounds: <reason>" in the owning package docstring.
+- Open questions are `ready-for-human` issues listing the data that bears on them; current behavior stands until answered.
+- The owner makes every substantive judgment. Never silently mutate owner-authored content.
 - State the problem with measured symptoms and cost before the solution. Proposals open with a scope note: what was asked vs what was found.

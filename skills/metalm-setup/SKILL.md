@@ -9,7 +9,7 @@ Brings one repo to the layout and rules in `~/.claude/metalm/guidelines/`. Read 
 
 Modes:
 - **setup** (default; "set up a repo", "make the repo compliant with guidelines"): phases 1–7, ends in one PR. Removes grandfathered exceptions it resolves.
-- **adopt** ("adopt metalm", "grandfather this repo"): opt in now, conform later. Phases 1 and 6, then on a branch: add the import line to `CLAUDE.md` (create it, `AGENTS.md` content merged, `AGENTS.md` symlinked), and record every phase-6 failure as a row under `## Grandfathered exceptions` in `docs/design/README.md` (create from template): `| <rule> | <guideline>.md#<section> | <where in repo> | adopted <YYYY-MM-DD> |`. Moves no content. One PR. New work follows metalm.
+- **adopt** ("adopt metalm", "grandfather this repo"): opt in now, conform later. Phases 1 and 6, then on a branch: add the import line to `CLAUDE.md` (create it, `AGENTS.md` content merged, `AGENTS.md` symlinked), and record every phase-6 failure as a row under `## Grandfathered exceptions` in `docs/design/exceptions.md`: `| <rule> | <guideline>.md#<section> | <where in repo> | adopted <YYYY-MM-DD> |`. Moves no content. One PR. New work follows metalm.
 - **check** ("metalm check", "check conformance with metalm"): phases 1 and 6. Report only; change nothing. A failure listed as a grandfathered exception reports as `excepted`, not `fail`.
 
 ## Target layout
@@ -17,19 +17,20 @@ Modes:
 ```
 CLAUDE.md                     the one loaded file: import line + repo notes (template: templates/CLAUDE.md)
 AGENTS.md -> CLAUDE.md        symlink, for Cursor/Codex
-docs/requirements/README.md   index of areas (templates/requirements-README.md)
-docs/requirements/<area>.md   persistent requirements (templates/requirements-area.md)
-docs/design/README.md         index + legacy-number table (templates/design-README.md)
-docs/design/<area>.md         named design docs (templates/design-area.md)
-docs/design/glossary.md       only if the repo has domain terms
-docs/design/backlog.md        ratified-but-unbuilt items, each with "done when"
+src/<pkg>/<area>/__init__.py  area doc: package docstring (guidelines/design.md#the-package-docstring)
+pyproject.toml                import-linter contracts (module map), `cuj` pytest marker
+docs/generated/               index, decisions, glossary, cujs: generated, committed, never hand-edited
+docs/design/<topic>.md        only decisions no code owns (other repos, outside services, data at rest)
+.pre-commit-config.yaml       templates/pre-commit-config.yaml (owner approves the first one)
+.github/workflows/docs.yml    templates/docs-workflow.yml
+tests/test_generated_docs.py  fails when regenerating would change docs/generated/
 docs/agents/issue-tracker.md  templates/issue-tracker.md (read by /review, /triage, /to-issues)
 docs/agents/triage-labels.md  templates/triage-labels.md
 .claude/skills/<repo>/SKILL.md teaches agents the repo CLI
 .vscode/extensions.json       recommends bierner.markdown-mermaid
 ```
 
-Not allowed: `CONTEXT.md`, `docs/adr/`, `.scratch/`, numbered decision logs, `docs/agents/domain.md`.
+Not allowed: `CONTEXT.md`, `docs/adr/`, `docs/requirements/`, `backlog.md`, `.scratch/`, numbered decision logs, `docs/agents/domain.md`, a hand-kept area list.
 
 ## Phase 1 — Explore (read only)
 
@@ -45,21 +46,22 @@ Not allowed: `CONTEXT.md`, `docs/adr/`, `.scratch/`, numbered decision logs, `do
 ## Phase 3 — Grill the owner
 
 Use `/grilling`: one question at a time, each with a recommendation. Settle only what the guidelines leave open:
-1. Areas: the list of `docs/requirements/` and `docs/design/` areas, and each area's ID prefix (`ORD`).
-2. Status of existing content: which docs are current truth, which aspirational, which stale.
+1. Areas: the packages that are areas, and the import contracts between them.
+2. Status of existing content: which rules are the owner's (they become `(owner)`), which are current, aspirational or stale; where two answers to one question conflict, which one survives.
+2a. CUJs: the journeys each core path must have, and the e2e test that will carry each `cuj` marker.
 3. Anything proposed for dropping (owner must approve each drop).
 4. Languages and toolchain rows that apply (guidelines/testing.md table).
 5. Core paths (money, deletion, persistence, auth, user data) → blind test-writer and mutation-testing scope.
 6. Surfaces: CLI present? repo skill present? MCP justified per guidelines/coding.md?
 7. Served app? → row in guidelines/operations.md table, launch agent, sandbox script.
-8. Repo-specific rules found in phase 1 that conflict with metalm: keep as a documented exception in the repo's design doc, or conform.
+8. Repo-specific rules found in phase 1 that conflict with metalm: keep as an exception (an `(owner)` rule in the package docstring that owns it), or conform.
 
 ## Phase 4 — Branch and restructure
 
 - `git switch -c metalm-setup`.
-- Move with `git mv` to keep history. Split a numbered log into named area docs; headings keep "(was D7)"; `docs/design/README.md` gets the number → document table.
-- Revise content to the guideline templates (requirements: IDs, MUST/SHOULD, checkable conditions; design: decision / Why / Rules out / Changes; Mermaid diagrams where guidelines/design.md requires one). Revising means reshaping, never deleting meaning.
-- `CONTEXT.md` → `docs/design/glossary.md`. `docs/adr/NNNN-*.md` → the matching named area doc.
+- Move docs into code per guidelines/design.md#moving-a-repo-to-docs-in-code: area docs → package docstrings; module maps → import contracts; owner rulings → `(owner)` rules (only those already the owner's); requirements → `cuj` markers on e2e tests, or a `ready-for-human` issue when no test exists. Each step deletes what it replaces; meaning moves, never vanishes silently.
+- `CONTEXT.md` and glossaries → `Terms:` in the owning package docstrings. `docs/adr/`, numbered logs, design docs → `(owner)` rules or code; D-number citations in code → the package name. Backlog files → GitHub issues.
+- Hooks and docs: write `.pre-commit-config.yaml` and `.github/workflows/docs.yml` from templates, add the staleness test, ask the owner to approve the hook file (first time only), then `pre-commit install` (a committed `core.hooksPath` hook moves into the config as a local hook; `git config --unset core.hooksPath`). Regenerate `docs/generated/`.
 - `AGENTS.md` content → `CLAUDE.md`; then `ln -s CLAUDE.md AGENTS.md`.
 - Write `docs/agents/*` and `.vscode/extensions.json` from templates. Delete `docs/agents/domain.md`.
 - Create the five triage labels on the GitHub repo before filing any issue (a `ready-for-human` issue fails without them): `for l in needs-triage needs-info ready-for-agent ready-for-human wontfix; do gh label create "$l" --force; done`.
@@ -77,9 +79,12 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 ### 6a Structure — report each as pass / fail / excepted, with path:
 - [ ] `CLAUDE.md` contains `@~/.claude/metalm/guidelines/index.md`; `AGENTS.md` is a symlink to it or absent.
 - [ ] No `CONTEXT.md`, `docs/adr/`, `.scratch/`, `docs/agents/domain.md`, numbered decision log (stubs excepted).
-- [ ] `docs/requirements/README.md` and `docs/design/README.md` list every file in their folder.
-- [ ] Every requirement has an ID; no ID duplicated.
-- [ ] Every design doc has a Status line and a `## Changes` section.
+- [ ] No `docs/requirements/`, `backlog.md`, Changes sections or dated rulings ("Ruled YYYY-MM-DD") in docs or docstrings.
+- [ ] Every area package has a docstring; import contracts exist where the ecosystem supports them and pass.
+- [ ] No question has two answers: every `(owner)` rule is unique (`docs/generated/decisions.md` has no two rules on one subject).
+- [ ] Every e2e test carries a `cuj` marker; every core path (money, deletion, persistence, access, user data) has a CUJ.
+- [ ] `.pre-commit-config.yaml` has `no-commit-to-branch` and `metalm-gendocs`; `pre-commit install` is done in this checkout; `.github/workflows/docs.yml` exists.
+- [ ] `docs/generated/` is current (the staleness test passes).
 - [ ] Every setting named in docs gives its location.
 - [ ] No "refusal"/"refuse"/"refuses" in docs (`grep -rniw 'refus\w*' docs CLAUDE.md`).
 - [ ] `docs/agents/issue-tracker.md` says GitHub; `.vscode/extensions.json` lists the Mermaid extension.

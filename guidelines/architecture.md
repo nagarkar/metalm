@@ -1,6 +1,5 @@
 # Architecture
 
-Status: DRAFT — not yet ratified by the owner.
 Scope: what a good design looks like — principles, OOAD patterns, concurrency, state machines, storage. Read before writing or reviewing a design. How to document it: `design.md`. Config vs state files: `coding.md`.
 
 ## Principles
@@ -14,7 +13,7 @@ Scope: what a good design looks like — principles, OOAD patterns, concurrency,
 ### Deterministic over LLM
 - The LLM has a short list of jobs (extract, draft, propose, explain); everything else is deterministic code. The LLM never invents parameters or types timestamps/links; it ranks or decides a value only under the gate below.
 - Deterministic passes first, one tight model question last; the LLM receives their protected vocabulary as law; deterministic checks push on every change, generative work is pulled on request.
-- Gate by consequence, not by who decided (Ruled 2026-10-03). A model may settle a value on its own when all of these hold:
+- Gate by consequence, not by who decided (owner) A model may settle a value on its own when all of these hold:
   - (a) it is a small enough decision that will not impact productivity or key use cases;
   - (b) the decision is logged as a routine (e.g. as a database hash update or a new entry); where possible, with confidence, model, prompt version and inputs, but these are not strictly necessary;
   - (c) it is marked as a model's decision, never misrepresented as a person's;
@@ -97,7 +96,7 @@ flowchart TD
 ```
 
 - Row-based (PostgreSQL, SQLite) to write or fetch whole records; column-based (ClickHouse; DuckDB when local) for aggregations over many rows and few columns.
-- SQLite for embedded, offline-first, single-writer apps. A few local processes from sibling repos sharing one file under WAL still count: see `coding.md#sharing-one-database-between-repos-ruled-2026-10-03`. PostgreSQL for high-concurrency server deployments needing strict ACID under many writers and role-based access.
+- SQLite for embedded, offline-first, single-writer apps. A few local processes from sibling repos sharing one file under WAL still count: see `coding.md#sharing-one-database-between-repos`. PostgreSQL for high-concurrency server deployments needing strict ACID under many writers and role-based access.
 - **Local vs managed:** local dev and prototypes default to SQLite in the app's workspace (`~/.<app>/`, see Workspace), never inside the repo. No Docker containers or background Postgres/MariaDB/Redis daemons unless the owner asks. Once an app has multiple users or is server-hosted, default to managed PostgreSQL (e.g. Supabase, Neon), connection string in `.env`, to offload backups, replication and failover; self-host only for data sovereignty or zero-latency edge needs.
 
 ## Relational design

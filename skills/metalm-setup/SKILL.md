@@ -67,7 +67,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - Write `docs/agents/*` and `.vscode/extensions.json` from templates. Delete `docs/agents/domain.md`.
 - Create the five triage labels on the GitHub repo before filing any issue (a `ready-for-human` issue fails without them): `for l in needs-triage needs-info ready-for-agent ready-for-human wontfix; do gh label create "$l" --force; done`.
 - Old path cited anywhere (code comments, docs, memory) → leave a one-line pointer stub at the old path.
-- Fill gaps with DRAFT stubs, never invented content: a missing section gets `TODO(owner): …`.
+- Fill gaps with marked stubs, never invented content: a missing section gets `TODO(owner): …`.
 
 ## Phase 5 — Prove nothing was lost
 
@@ -102,6 +102,12 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 ## Phase 7 — PR
 
 - Commit in logical steps (move, revise, add). Push branch, open one PR. Body: summary, link to inventory issue and mapping comment, checklist results, list of owner decisions from phase 3. Never push to main.
+
+## Why it works this way
+
+- Inventory before edits makes loss detectable; a separate mapper cannot excuse its own rewrite.
+- Content checks run one subagent per guideline in `guidelines/index.md`, so a new guideline extends every check.
+- metalm's own setup skill replaces Matt Pocock's: two setup skills writing the same files conflict. Matt's process skills stay, with the mappings in `guidelines/design.md#matt-pocock-skill-mapping`.
 
 ## Boundaries
 

@@ -1,6 +1,5 @@
 # Testing
 
-Status: DRAFT — not yet ratified by the owner.
 Scope: how agents write, run and report tests and verification in every `*lm` repo.
 
 A test exists to fail when behaviour a user relies on breaks. A test that cannot fail, endorses the current bug, or checks the wrong thing is worse than none: it reads as proof.
@@ -70,7 +69,8 @@ Tripwire/policy examples worth copying:
 - Adding a path pins the legacy path unchanged (a `...AreUnchanged` test).
 - Pipelines with a swappable processor inject the fake and assert downstream has no remote-specific branch.
 
-### Where tests live (Ruled 2026-10-03)
+### Where tests live
+(owner) Every rule in this section is the owner's.
 - **Unit tests live with the code.** They sit in the same repo and package as the code they test (`tests/` mirrors `src/<pkg>/`). A library's own suite proves the library: changing it never requires another repo's suite to pass first.
 - **Integration tests do not make up for unit tests.** A module covered only through an end-to-end journey has no unit tests. Integration tests have three gaps:
   - a failure doesn't point at the faulty unit;

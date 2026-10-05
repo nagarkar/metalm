@@ -1,5 +1,5 @@
 # UI
-Status: Ratified by the owner (Ruled 2026-10-05).
+(owner) Every rule in this file is the owner's.
 Scope: the layout and navigation of every served page. Serving, restarting and browser checks: `operations.md`. Tests for pages: `testing.md`.
 
 ## Findable

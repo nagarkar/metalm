@@ -1,5 +1,4 @@
 # Coding
-Status: DRAFT — not yet ratified by the owner.
 Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in every `*lm` repo.
 
 ## Design and patterns
@@ -111,7 +110,8 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Never hand-edit state or write ad-hoc scripts that bypass validation/fingerprints (no one-off backfills, no hand-dumped fingerprints, no `ps`/`stat` polling loops). Use the verb (`approve --set`, `status --why`, `verify`); add the verb if missing.
 - A file a person curates is theirs: tools append/increment, never rewrite an entry a person touched. Exported notes carry a marker; unmarked files are never touched. Cross-run knowledge: small committed JSON/JSONL.
 
-### Where `.env` lives (Ruled 2026-10-03)
+### Where `.env` lives
+(owner) Every rule in this section is the owner's.
 `.env` may live outside the checkout, and several repos may share one. Config never moves.
 - **One override per repo.** A repo reads the checkout's `.env` unless `<REPO>_ENV` (e.g. `YTLM_ENV`, `BEELM_ENV`) names another file by absolute path. Every repo supports it, in the one function that finds `.env` (`paths.env_path()`).
 - **Set where a file can't be.** `<REPO>_ENV` is set in the process environment: the shell profile, the launchd plist, the `env` of `.mcp.json`. Never inside a `.env`, which can't say where it is.
@@ -129,7 +129,8 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Inspect the live schema before writing SQL or a migration: `sqlite3 -readonly <db> .schema`, or the configured DB MCP tool.
 - Open SQLite by plain path: a `file:...?mode=ro` URI can open a nonexistent literal file and return empty rows.
 
-### Major migrations and multi-step refactors (Ruled 2026-10-03)
+### Major migrations and multi-step refactors
+(owner) Every rule in this section is the owner's.
 The additive rule is the default and nothing is ever dropped silently. A major change is a special case: a non-additive migration (rename, split, merge, type or key change, moving or merging database files) or a refactor that spans several PRs or repos (e.g. extracting a shared core package).
 - **Grill the owner first.** The owner is the product manager. Run `/grilling` before any code: one question at a time with a recommendation, covering why now, what each consumer loses or gains, the order of steps, the rollback, acceptable downtime and what "done" means. The outcome is one parent issue with numbered steps, approved by the owner before step 1.
 - **Expand, migrate, contract.** Expand: add the new names, tables or views beside the old ones. Migrate: move readers, then writers, to the new names, one PR at a time. Contract: remove the old names only after every consumer has moved. Each step leaves every consumer working and every suite green.
@@ -139,7 +140,8 @@ The additive rule is the default and nothing is ever dropped silently. A major c
 - **Contract steps are destructive.** Dropping an old table, column or view falls under Database safety: print the SQL and wait for the owner's word in chat.
 - **One parent issue** carries the step checklist; each step's PR cites it and the design doc. Steps land in order.
 
-### Sharing one database between repos (Ruled 2026-10-03)
+### Sharing one database between repos
+(owner) Every rule in this section is the owner's.
 When two or more repos hold the same kind of data (ytlm and beelm: transcripts from different sources), they share one SQLite file, not two copies of a schema. Example: `/Volumes/Crucial X6/corpuslm/transcript.sqlite`, schema owned by the `corpuslm` library.
 - **One schema owner.** Exactly one standalone library, in its own repo, defines `SCHEMA`, `MIGRATIONS`, `setup` and the schema-vs-doc test. Every consuming repo imports it at the same version (editable install of the library's repo). No consumer writes DDL against the file, and the library is never a package inside one consumer's repo.
 - **A coherent name and place.** The file and its folder are named for the shared data and the schema owner, never for one consumer (`/Volumes/Crucial X6/corpuslm/transcript.sqlite`, not `ytlm/ytlm.sqlite`), so an agent working in any repo can see the file is shared. A consumer's own workspace never holds the shared file.
@@ -156,7 +158,8 @@ When two or more repos hold the same kind of data (ytlm and beelm: transcripts f
 - Agents will not run, without first printing the exact SQL and getting the owner's confirmation in chat: `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, `ALTER TABLE … DROP COLUMN`, or `DELETE`/`UPDATE` without a targeted `WHERE`. This covers resetting test fixtures and dropping obsolete columns too.
 - Analytical questions and query experiments use read-only access (`sqlite3 -readonly`, a read-only Postgres role), never the app's write credentials.
 
-### State files: one bag of attributes per subject (Ruled 2026-10-02)
+### State files: one bag of attributes per subject
+(owner) Every rule in this section is the owner's.
 A state file is a bag of attributes, named for the one subject that gives its attributes their relevance. A subject is either:
 - **a consumer**: the attributes matter because one thing acts on them (`youtube.json` holds everything the YouTube upload needs: the title and description it sends, plus the video ID, comment ID and what it last applied); or
 - **a noun**: the attributes describe one thing (`episode.json` the source material and how it was produced, `transcript.json`, `cutaways.json`, `wrap.json`).

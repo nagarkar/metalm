@@ -1,5 +1,4 @@
 # Install Scripts
-Status: DRAFT — not yet ratified by the owner.
 Scope: any script that installs, links, or configures a tool on the owner's machine (e.g. metalm `install.sh`, a repo's `schedule install` verb).
 
 ## Rules

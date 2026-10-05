@@ -1,6 +1,6 @@
 # metalm index
 
-Status: DRAFT — not yet ratified by the owner.
+Rules ending `(owner)`, and every rule in a section or file that opens with `(owner)`, are the owner's; the rest are agent-drafted and may change.
 Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill defaults. A repo's documented exception (an `(owner)` rule in its code or `docs/design/`) beats these.
 
 ## Read before acting
@@ -11,14 +11,14 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 | record a design decision, write a package docstring, generated docs, or a diagram | `design.md` |
 | design or review structure: principles, patterns, concurrency, state machines, database choice and schema | `architecture.md` |
 | write SQL, a migration, or query a database | `coding.md#storage-and-migrations` |
-| plan a non-additive migration or a refactor spanning several PRs or repos | `coding.md#major-migrations-and-multi-step-refactors-ruled-2026-10-03` |
-| share a database between repos, or point a repo at another repo's database | `coding.md#sharing-one-database-between-repos-ruled-2026-10-03` |
-| put `.env` outside the checkout, share one between repos, or read a new environment variable | `coding.md#where-env-lives-ruled-2026-10-03` |
+| plan a non-additive migration or a refactor spanning several PRs or repos | `coding.md#major-migrations-and-multi-step-refactors` |
+| share a database between repos, or point a repo at another repo's database | `coding.md#sharing-one-database-between-repos` |
+| put `.env` outside the checkout, share one between repos, or read a new environment variable | `coding.md#where-env-lives` |
 | write code, a CLI, skill, MCP server, or an LLM call | `coding.md` |
 | write or change tests, or claim something works | `testing.md` |
-| move code between repos, or decide where a test belongs | `testing.md#where-tests-live-ruled-2026-10-03` |
+| move code between repos, or decide where a test belongs | `testing.md#where-tests-live` |
 | touch a served page, server, launch agent, Tailscale | `operations.md` |
-| check, diagnose or screenshot a served page (including "the owner cannot see it") | `operations.md#browser-checks` and `operations.md#served-apps-ruled-2026-10-01` |
+| check, diagnose or screenshot a served page (including "the owner cannot see it") | `operations.md#browser-checks` and `operations.md#served-apps` |
 | design or change a page's layout or navigation, or hand over a UI feature | `ui.md` |
 | create or change a scheduled job (launchd, local scheduled task, cloud routine) or unattended work | `scheduling.md`: go down the checklist for its type |
 | write an install script | `install-scripts.md` |
@@ -65,7 +65,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 
 ## Writing for the owner
 
-- Every setting, flag, pin or config value named comes with its location: file path (line for code), or "proposed, does not exist yet" + the file it would live in; also its default, and whether the file is global or per-unit. (Ruled 2026-09-25.)
+- Every setting, flag, pin or config value named comes with its location: file path (line for code), or "proposed, does not exist yet" + the file it would live in; also its default, and whether the file is global or per-unit. (owner)
 - Terse. Lead with the action; report outcomes, not effort. Plain words, not pipeline jargon. No pasted JSON or old/new text in chat. Summaries 3–5 bullets; no long walkthroughs unless asked. Report in prose per unit (staged, written, left out, skipped). After tool output, state the next action it implies; do not stop at status.
 - Mark owner rulings `(owner)` where they are written down; no date.
 - Every review ask carries a phone-ready page link.

@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # Install metalm for the current user. Idempotent; see guidelines/install-scripts.md.
+# metalm is referenced, never copied: ~/.claude/metalm links to this clone, each skill under
+# skills/ links into ~/.claude/skills, and repos import @~/.claude/metalm/guidelines/index.md (the
+# same path for every user). Updating is `git pull` here. A copy or digest would drift.
+# The script owns one block in ~/.claude/CLAUDE.md (between the metalm markers) and replaces only it.
+# Cloud sessions have no ~/.claude/metalm; if they are needed, add metalm as a pinned git submodule
+# at .metalm/ in each repo and import @.metalm/guidelines/index.md.
 #   ./install.sh             install or refresh
 #   ./install.sh --dry-run   print what would change, change nothing
 #   ./install.sh --uninstall remove the symlinks and the managed block
@@ -150,5 +156,5 @@ if [ "$NOTIFIER_BUILT" = 1 ]; then
   echo "owner: the first banner asks to allow notifications from SuperLM; allow them, or turn them on in System Settings → Notifications → SuperLM"
 fi
 # Guidelines over their line caps still install; the warning names the file to cut.
-"$ROOT/tools/check-caps.sh" || echo "warning: a guideline is over its cap (docs/design/guideline-authoring.md); see above" >&2
+"$ROOT/tools/check-caps.sh" || echo "warning: a guideline is over its cap (guidelines/design.md#writing-metalm-guidelines); see above" >&2
 echo "done. Update later with: git -C $ROOT pull && $ROOT/install.sh"

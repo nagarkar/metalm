@@ -1,8 +1,8 @@
 # Operations
-Status: DRAFT — not yet ratified by the owner.
 Scope: served apps on this Mac, their servers and launch agents, and checking pages in a browser. Scheduled and unattended work: scheduling.md.
 
-## Served apps (Ruled 2026-10-01)
+## Served apps
+(owner) Every rule in this section is the owner's.
 - Every app serves its page on loopback behind `tailscale serve`, all apps under one tailnet name, one HTTPS port each.
 - The tailnet name and the port table (app, tailnet HTTPS port, local server, launch agent) live in the owner's global `~/.claude/CLAUDE.md` under `## Served apps (this Mac)`, never in git. It is the one place ports are recorded. (owner)
 - User-specific details (host names, tailnet names, this Mac's ports, account ids, personal paths, and any other names or tables that identify the owner or this machine) never enter git: not in guidelines, skills, docs, tests or fixtures. They live in exactly one of: (owner)
@@ -15,7 +15,7 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 - The page the owner looks at is the app's one real server. A running server keeps the code it started with, so a change does not exist for the owner until that server is restarted onto it.
 - One local server process per app hosts all its pages (job UI, dashboard, approvals); no cloud hosting until missed runs prove a need. One server per unit of work where the app has units (e.g. gamelm: one SKU per server, named on the command line).
 - `doctor` checks Tailscale is connected and prints the URL. It should warm the cert: the first HTTPS hit takes ~12 s.
-- `doctor` checks the real server is not older than its code: it compares the server process's start time with the newest commit touching served code and fails with "server is older than HEAD: `launchctl kickstart -k gui/501/com.nagarkar.<app>.serve`". A merge that skipped the restart is caught by the next `doctor` run instead of by the owner. (Ruled 2026-10-05.)
+- `doctor` checks the real server is not older than its code: it compares the server process's start time with the newest commit touching served code and fails with "server is older than HEAD: `launchctl kickstart -k gui/501/com.nagarkar.<app>.serve`". A merge that skipped the restart is caught by the next `doctor` run instead of by the owner. (owner)
 - A new app takes the next free tailnet port and gets a row in the owner's table (`~/.claude/CLAUDE.md`), a launch agent, and a sandbox script before its first UI change.
 
 ## tailscale serve
@@ -61,7 +61,7 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 ## Browser checks
 - Check pages in real Chrome, driven with `mcp__claude-in-chrome__*`, at desktop width and at 375 px mobile width.
 - This holds for diagnosis too. When the owner reports a page as missing or broken, check it in real Chrome or with `curl` against the tailnet URL, never the Browser pane: its blocked fetches look like a broken page and send the diagnosis the wrong way.
-- Exception: the pane blocks fetches only on the tailnet name; on `http://127.0.0.1:<port>` they work. Its `mobile` preset is then the one true 375 px check: real Chrome will not size a window below ~500 px, and headless Chrome renders at 500 px whatever `--window-size` says. Use it on loopback for layout only, read-only, and say so. (Ruled 2026-10-05.)
+- Exception: the pane blocks fetches only on the tailnet name; on `http://127.0.0.1:<port>` they work. Its `mobile` preset is then the one true 375 px check: real Chrome will not size a window below ~500 px, and headless Chrome renders at 500 px whatever `--window-size` says. Use it on loopback for layout only, read-only, and say so. (owner)
 - Beyond "it renders", the check answers the readability questions in `ui.md`.
 - The Claude desktop Browser pane (`mcp__Claude_Browser__*`) cannot run local fetch-based apps: every fetch and API POST fails `net::ERR_BLOCKED_BY_CLIENT`. Never use it to check a served app. It also suppresses native `confirm()`, so pages use inline confirms.
 - The in-app preview renders local files statically; Chrome tools cannot click inside an Artifact frame. Verify Artifact page logic with a headless jsdom harness (optional dev check behind a node/jsdom presence test).

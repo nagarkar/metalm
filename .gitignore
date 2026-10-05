@@ -3,3 +3,6 @@
 *.bak.*
 # The SuperLM notifier app, built by install.sh (tools/notifier/build.sh).
 tools/notifier/build/
+.venv/
+*.egg-info/
+__pycache__/

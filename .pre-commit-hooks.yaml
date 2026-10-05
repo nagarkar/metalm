@@ -1,0 +1,8 @@
+# Hooks other repos use from metalm (guidelines/design.md#generated-docs).
+- id: metalm-gendocs
+  name: metalm generated docs
+  description: Regenerates docs/generated/ from docstrings and cuj test markers; stops the commit when it changed a file.
+  entry: metalm-gendocs
+  language: python
+  pass_filenames: false
+  files: \.(py|toml)$

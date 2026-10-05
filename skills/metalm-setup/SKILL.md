@@ -87,6 +87,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - [ ] `.pre-commit-config.yaml` has `no-commit-to-branch` and `metalm-gendocs`; `pre-commit install` is done in this checkout; `.github/workflows/docs.yml` exists.
 - [ ] `docs/generated/` is current (the staleness test passes).
 - [ ] Every setting named in docs gives its location.
+- [ ] No user-specific details in git: no tailnet or host names, ports of this Mac or personal paths in tracked files (`git grep -nE '[a-z0-9-]+\.tail[0-9a-f]+\.ts\.net|/Users/[a-z]+/'`) or in history (`git log --all -p | grep -cE` the same); placeholders like `host.example.ts.net` pass. A hit in history is reported to the owner, who decides on a rewrite.
 - [ ] No "refusal"/"refuse"/"refuses" in docs (`grep -rniw 'refus\w*' docs CLAUDE.md`).
 - [ ] `docs/agents/issue-tracker.md` says GitHub; `.vscode/extensions.json` lists the Mermaid extension.
 - [ ] The GitHub repo has the five triage labels (`gh label list`: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`).

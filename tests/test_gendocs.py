@@ -162,3 +162,73 @@ def test_imports_nothing_from_the_target_repo(repo: Path) -> None:
 
 def test_metalm_own_generated_docs_are_current() -> None:
     assert stale(ROOT) == [], "run: metalm-gendocs (from the metalm root) and commit docs/generated/"
+
+
+@pytest.fixture
+def node_repo(tmp_path: Path) -> Path:
+    put(tmp_path, "package.json", '{"name": "shop"}\n')
+    put(tmp_path, "src/orders/index.ts", '''
+        import { db } from "../db";
+
+        /**
+         * @packageDocumentation
+         * Orders: takes and keeps orders.
+         *
+         * Never imports: web
+         *
+         * Decisions:
+         * - Orders are cancelled, never deleted. (owner)
+         *
+         * Terms:
+         * - **order**: a request to buy.
+         */
+        export const x = 1;
+    ''')
+    put(tmp_path, "src/main.ts", '/** Main: starts the server. */\nexport {};\n')
+    put(tmp_path, "src/orders/orders.test.ts", '''
+        import { test } from "vitest";
+
+        // cuj: The owner cancels an order via the orders page, and sees it marked cancelled.
+        test("cancel order", () => {});
+
+        it("plain", () => {});
+    ''')
+    return tmp_path
+
+
+def test_node_package_documentation_feeds_index_decisions_and_glossary(node_repo: Path) -> None:
+    files = generate(node_repo)
+    assert "## `orders`" in files["docs/generated/index.md"] and "Orders: takes and keeps orders." in files["docs/generated/index.md"]
+    assert "Never imports: web" in files["docs/generated/index.md"]
+    assert "## `main`" in files["docs/generated/index.md"] and "Main: starts the server." in files["docs/generated/index.md"]
+    assert "orders.test" not in files["docs/generated/index.md"]
+    assert "- `orders`: Orders are cancelled, never deleted. (owner)" in files["docs/generated/decisions.md"]
+    assert "- **order** (`orders`): a request to buy." in files["docs/generated/glossary.md"]
+
+
+def test_node_cuj_comment_names_the_test(node_repo: Path) -> None:
+    cujs = generate(node_repo)["docs/generated/cujs.md"]
+    assert "sees it marked cancelled. (`src/orders/orders.test.ts::cancel order`)" in cujs
+    assert "plain" not in cujs
+
+
+def test_node_cuj_comment_without_a_test_call_fails(node_repo: Path) -> None:
+    put(node_repo, "tests/bad.spec.ts", "// cuj: A journey with nothing under it.\nconst x = 1;\n")
+    with pytest.raises(GenDocsError, match="tests/bad.spec.ts:1: '// cuj:'"):
+        generate(node_repo)
+
+
+def test_node_files_ignored_without_package_json(repo: Path) -> None:
+    put(repo, "src/shop/pages/app.js", "/** App: page script. */\n")
+    assert "app" not in generate(repo)["docs/generated/index.md"].split("## `shop.web`")[0].split("## `shop.orders`")[0]
+    assert "pages" not in generate(repo)["docs/generated/index.md"]
+
+
+def test_uncovered_languages_are_listed_for_the_agent_to_raise(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    put(repo, "src/native/Bridge.swift", "// swift\n")
+    put(repo, "src/native/lib.rs", "// rust\n")
+    index = generate(repo)["docs/generated/index.md"]
+    assert "## Not covered" in index and "Rust (1 files), Swift (1 files)" in index
+    assert "ask the owner whether to add each language" in index
+    main(["--root", str(repo)])
+    assert "not covered: Rust, Swift" in capsys.readouterr().err

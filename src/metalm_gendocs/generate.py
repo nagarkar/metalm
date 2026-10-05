@@ -18,6 +18,14 @@ OWNER_MARK = "(owner)"
 SECTION_RE = re.compile(r"^(Decisions|Terms):\s*$")
 NEVER_IMPORTS_RE = re.compile(r"^Never imports:\s*(.+)$")
 TERM_RE = re.compile(r"^\*\*(?P<term>[^*]+)\*\*:\s*(?P<definition>.+)$", re.S)
+NODE_EXTS = (".ts", ".tsx", ".js", ".mjs", ".cjs")
+NODE_TEST_RE = re.compile(r"\.(test|spec)\.(ts|tsx|js|mjs|cjs)$")
+JSDOC_RE = re.compile(r"/\*\*(.*?)\*/", re.S)
+CUJ_COMMENT_RE = re.compile(r"^\s*//\s*cuj:\s*(?P<journey>.+?)\s*$")
+NODE_TEST_CALL_RE = re.compile(r"""^\s*(?:test|it)(?:\.\w+)?\(\s*(['"`])(?P<name>.+?)\1""")
+# Languages metalm-gendocs does not read yet: extension -> name shown in index.md.
+UNCOVERED = {".swift": "Swift", ".go": "Go", ".rs": "Rust", ".kt": "Kotlin", ".java": "Java", ".rb": "Ruby", ".cs": "C#", ".cpp": "C++", ".c": "C"}
+SKIP_DIRS = {"__pycache__", "node_modules", ".venv", "build", "dist", ".git"}
 
 
 class GenDocsError(Exception):
@@ -77,6 +85,29 @@ def _docstring(path: Path) -> str:
     return ast.get_docstring(tree, clean=True) or ""
 
 
+def _jsdoc(path: Path) -> str:
+    """The `@packageDocumentation` block, else a JSDoc block that opens the file; cleaned like a docstring."""
+    text = path.read_text()
+    blocks = list(JSDOC_RE.finditer(text))
+    chosen = next((b for b in blocks if "@packageDocumentation" in b.group(1)), None)
+    if chosen is None and blocks and not text[: blocks[0].start()].strip().lstrip("#!").strip():
+        chosen = blocks[0]
+    if chosen is None:
+        return ""
+    lines = []
+    for line in chosen.group(1).splitlines():
+        line = re.sub(r"^\s*\* ?", "", line)
+        if line.strip() != "@packageDocumentation":
+            lines.append(line.rstrip())
+    return "\n".join(lines).strip()
+
+
+def _walk(root: Path, exts: tuple[str, ...]) -> list[Path]:
+    if not root.is_dir():
+        return []
+    return sorted(p for p in root.rglob("*") if p.suffix in exts and p.is_file() and not SKIP_DIRS & set(p.parts))
+
+
 def _module_name(src_root: Path, path: Path) -> str:
     parts = list(path.relative_to(src_root).with_suffix("").parts)
     if parts[-1] == "__init__":
@@ -109,16 +140,31 @@ def _sections(doc: str) -> dict[str, list[str]]:
     return out
 
 
+def _is_node(root: Path) -> bool:
+    return (root / "package.json").is_file()
+
+
 def _sources(root: Path, cfg: Config) -> list[Path]:
+    """Python files, plus Node files (tests excluded) when the repo has a root package.json."""
     src_root = root / cfg.src
-    if not src_root.is_dir():
-        return []
-    return sorted(p for p in src_root.rglob("*.py") if "__pycache__" not in p.parts)
+    found = _walk(src_root, (".py",))
+    if _is_node(root):
+        found += [p for p in _walk(src_root, NODE_EXTS) if not NODE_TEST_RE.search(p.name)]
+    return sorted(found)
 
 
 def _is_area(src_root: Path, path: Path) -> bool:
     rel = path.relative_to(src_root).parts
-    return path.name == "__init__.py" or len(rel) == 2
+    if path.suffix == ".py":
+        return path.name == "__init__.py" or len(rel) == 2
+    return path.stem == "index" or len(rel) == 1
+
+
+def _node_module_name(src_root: Path, path: Path) -> str:
+    parts = list(path.relative_to(src_root).with_suffix("").parts)
+    if parts[-1] == "index":
+        parts.pop()
+    return "/".join(parts) or "(root)"
 
 
 def _cuj_journey(decorator: ast.expr) -> ast.expr | None:
@@ -164,14 +210,44 @@ def _cujs(root: Path, cfg: Config) -> list[Cuj]:
     return sorted(found, key=lambda c: (c.test_id, c.journey))
 
 
+def _node_cujs(root: Path, cfg: Config) -> list[Cuj]:
+    """`// cuj: <journey>` on the line above a `test(...)` or `it(...)` call."""
+    if not _is_node(root):
+        return []
+    files = {p for base in (root / cfg.tests, root / cfg.src) for p in _walk(base, NODE_EXTS) if NODE_TEST_RE.search(p.name)}
+    found: list[Cuj] = []
+    for path in sorted(files):
+        rel = path.relative_to(root).as_posix()
+        lines = path.read_text().splitlines()
+        for number, line in enumerate(lines, 1):
+            match = CUJ_COMMENT_RE.match(line)
+            if not match:
+                continue
+            following = next((l for l in lines[number:] if l.strip()), "")
+            call = NODE_TEST_CALL_RE.match(following)
+            if call is None:
+                raise GenDocsError(f"{rel}:{number}: '// cuj:' must sit on the line above a test(...) or it(...) call with a string name")
+            found.append(Cuj(" ".join(match.group("journey").split()), f"{rel}::{call.group('name')}"))
+    return found
+
+
+def _uncovered(root: Path, cfg: Config) -> dict[str, int]:
+    """Source and test files in languages the generator does not read: name -> file count."""
+    counts: dict[str, int] = {}
+    for base in (root / cfg.src, root / cfg.tests):
+        for path in _walk(base, tuple(UNCOVERED)):
+            counts[UNCOVERED[path.suffix]] = counts.get(UNCOVERED[path.suffix], 0) + 1
+    return counts
+
+
 def _extract(root: Path, cfg: Config) -> tuple[list[Area], list[Entry], list[Entry]]:
     src_root = root / cfg.src
     areas: list[Area] = []
     decisions: list[Entry] = []
     terms: list[Entry] = []
     for path in _sources(root, cfg):
-        doc = _docstring(path)
-        module = _module_name(src_root, path)
+        doc = _docstring(path) if path.suffix == ".py" else _jsdoc(path)
+        module = _module_name(src_root, path) if path.suffix == ".py" else _node_module_name(src_root, path)
         rel = path.relative_to(root).as_posix()
         if _is_area(src_root, path):
             never = ""
@@ -189,8 +265,17 @@ def _extract(root: Path, cfg: Config) -> tuple[list[Area], list[Entry], list[Ent
     return areas, decisions, terms
 
 
-def _render_index(areas: list[Area]) -> str:
+def _render_index(areas: list[Area], uncovered: dict[str, int]) -> str:
     lines = ["# Areas", ""]
+    if uncovered:
+        listed = ", ".join(f"{name} ({count} files)" for name, count in sorted(uncovered.items()))
+        lines += [
+            "## Not covered",
+            "",
+            f"metalm-gendocs reads Python and TypeScript/JavaScript only; it skipped {listed}.",
+            "Agent: ask the owner whether to add each language to metalm-gendocs; on yes, file a metalm issue naming its doc-comment convention, test framework and this repo.",
+            "",
+        ]
     if not areas:
         lines.append("None yet: no packages under the source root.")
     for area in sorted(areas, key=lambda a: a.name):
@@ -258,11 +343,16 @@ def generate(root: Path) -> dict[str, str]:
     areas, decisions, terms = _extract(root, cfg)
     out = Path(cfg.out)
     return {
-        (out / "index.md").as_posix(): _render_index(areas),
+        (out / "index.md").as_posix(): _render_index(areas, _uncovered(root, cfg)),
         (out / "decisions.md").as_posix(): _render_decisions(decisions),
         (out / "glossary.md").as_posix(): _render_glossary(terms),
-        (out / "cujs.md").as_posix(): _render_cujs(_cujs(root, cfg)),
+        (out / "cujs.md").as_posix(): _render_cujs(sorted(_cujs(root, cfg) + _node_cujs(root, cfg), key=lambda c: (c.test_id, c.journey))),
     }
+
+
+def uncovered(root: Path) -> dict[str, int]:
+    """Languages found under the source and test roots that the generator does not read: name -> file count."""
+    return _uncovered(root, load_config(root))
 
 
 def stale(root: Path) -> list[str]:

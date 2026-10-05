@@ -2,5 +2,5 @@
 
 # Glossary
 
-- **area** (`metalm_gendocs`): a package (a directory with `__init__.py`) under the source root, or a module directly inside the top package.
+- **area** (`metalm_gendocs`): a package (a directory with `__init__.py` or `index.ts`/`index.js`) under the source root, a module directly inside the top Python package, or a Node file directly under the source root.
 - **CUJ** (`metalm_gendocs`): a critical user journey, declared on the end-to-end test that proves it.

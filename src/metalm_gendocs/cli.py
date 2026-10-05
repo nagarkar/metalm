@@ -10,7 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from metalm_gendocs.generate import GenDocsError, stale, write
+from metalm_gendocs.generate import GenDocsError, stale, uncovered, write
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     except GenDocsError as exc:
         print(f"metalm-gendocs: {exc}", file=sys.stderr)
         return 2
+    skipped = uncovered(root)
+    if skipped:
+        print(f"metalm-gendocs: not covered: {', '.join(sorted(skipped))}; see docs/generated/index.md", file=sys.stderr)
     verb = "stale" if args.check else "regenerated"
     for rel in files:
         print(f"{verb}: {rel}")

@@ -37,6 +37,7 @@ Not allowed: `CONTEXT.md`, `docs/adr/`, `docs/requirements/`, `backlog.md`, `.sc
 - `git status` (must be clean), `git remote -v`. No GitHub remote → create a private repo with `gh repo create <name> --private --source . --push` (owner's standing rule).
 - Inventory what exists: `CLAUDE.md`, `AGENTS.md`, `README.md`, every `*.md` under `docs/` and other doc folders, `CONTEXT.md`, `docs/adr/`, `.scratch/`, numbered logs (`design-decisions.md`, `D7`-style references in code: `grep -rn "D[0-9]\+" src`), `.claude/skills/`, `tools/`, test layout, languages (`pyproject.toml`, `package.json`, `Cargo.toml`), served pages / launch agents.
 - Skip `.venv`, `node_modules`, `.claude/worktrees`, build output.
+- Languages `metalm-gendocs` does not read (its "Not covered" list): ask the owner whether to add each to metalm; on yes, file a metalm issue (doc-comment convention, test framework, this repo).
 
 ## Phase 2 — Content inventory (before any edit)
 

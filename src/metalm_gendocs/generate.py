@@ -251,10 +251,16 @@ def _extract(root: Path, cfg: Config) -> tuple[list[Area], list[Entry], list[Ent
         rel = path.relative_to(root).as_posix()
         if _is_area(src_root, path):
             never = ""
-            for line in doc.splitlines():
+            lines = doc.splitlines()
+            for number, line in enumerate(lines):
                 match = NEVER_IMPORTS_RE.match(line.strip())
                 if match:
-                    never = match.group(1).strip()
+                    parts = [match.group(1).strip()]
+                    for following in lines[number + 1 :]:  # wrapped continuation lines are indented
+                        if not following.strip() or not following.startswith((" ", "\t")):
+                            break
+                        parts.append(following.strip())
+                    never = " ".join(parts)
             areas.append(Area(module, rel, _paragraph_one(doc), never))
         sections = _sections(doc)
         decisions += [Entry(module, rel, text) for text in sections.get("Decisions", [])]

@@ -232,3 +232,8 @@ def test_uncovered_languages_are_listed_for_the_agent_to_raise(repo: Path, capsy
     assert "ask the owner whether to add each language" in index
     main(["--root", str(repo)])
     assert "not covered: Rust, Swift" in capsys.readouterr().err
+
+
+def test_wrapped_never_imports_keeps_its_continuation_lines(repo: Path) -> None:
+    put(repo, "src/shop/web.py", '"""Web: the HTTP surface.\n\nNever imports: shop.orders,\n    shop.payments\n"""\n')
+    assert "Never imports: shop.orders, shop.payments" in generate(repo)["docs/generated/index.md"]

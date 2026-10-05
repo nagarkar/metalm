@@ -1,5 +1,5 @@
 # UI
-Status: DRAFT — not yet ratified by the owner.
+Status: Ratified by the owner (Ruled 2026-10-05).
 Scope: the layout and navigation of every served page. Serving, restarting and browser checks: `operations.md`. Tests for pages: `testing.md`.
 
 ## Findable

@@ -3,23 +3,20 @@ Status: DRAFT — not yet ratified by the owner.
 Scope: served apps on this Mac, their servers and launch agents, and checking pages in a browser. Scheduled and unattended work: scheduling.md.
 
 ## Served apps (Ruled 2026-10-01)
-- Every app serves its page on loopback behind `tailscale serve`. All share one tailnet name, `host.example.ts.net`, one HTTPS port each:
-
-| app | tailnet HTTPS port | local server | launch agent |
-|---|---|---|---|
-| authorllm (audiobook page) | 443 (bare name) | 127.0.0.1:8792 | proposed, does not exist yet |
-| supplylm (review page) | 8443 | 127.0.0.1:8777 | proposed, does not exist yet |
-| tradelm (approvals, accounts, dashboard) | 9443 | 127.0.0.1:9443 | `~/Library/LaunchAgents/com.nagarkar.tradelm.serve.plist` (installed 2026-10-01) |
-| gamelm (Vocingo review) | 10443 | 127.0.0.1:8778 | proposed, does not exist yet |
-
-- This table is the one place ports are recorded. A repo's skill may repeat its own row; it never assigns a port.
+- Every app serves its page on loopback behind `tailscale serve`, all apps under one tailnet name, one HTTPS port each.
+- The tailnet name and the port table (app, tailnet HTTPS port, local server, launch agent) live in the owner's global `~/.claude/CLAUDE.md` under `## Served apps (this Mac)`, never in git. It is the one place ports are recorded. (owner)
+- User-specific details (host names, tailnet names, this Mac's ports, account ids, personal paths, and any other names or tables that identify the owner or this machine) never enter git: not in guidelines, skills, docs, tests or fixtures. They live in exactly one of: (owner)
+  - the owner's global `~/.claude/CLAUDE.md`, one section per kind (`## Served apps (this Mac)`), for what every session may need;
+  - Claude's memory for the repo (`~/.claude/projects/<repo>/memory/`), for what only that repo's sessions need;
+  - the repo's gitignored `.env`, for values code reads at run time (keys, pointers).
+  Tests use placeholders such as `host.example.ts.net`; skills and docs point to the section by name ("the tailnet name in `~/.claude/CLAUDE.md`").
 - One port per app. Never map paths under one port: Tailscale forwards the prefix and pages use root-relative routes. Never use `--set-path`. Never take another app's port.
 - The app binds loopback only; `tailscale serve` fronts it. Answer only Host headers naming this machine (loopback, `*.ts.net`), else 421.
 - The page the owner looks at is the app's one real server. A running server keeps the code it started with, so a change does not exist for the owner until that server is restarted onto it.
 - One local server process per app hosts all its pages (job UI, dashboard, approvals); no cloud hosting until missed runs prove a need. One server per unit of work where the app has units (e.g. gamelm: one SKU per server, named on the command line).
 - `doctor` checks Tailscale is connected and prints the URL. It should warm the cert: the first HTTPS hit takes ~12 s.
 - `doctor` checks the real server is not older than its code: it compares the server process's start time with the newest commit touching served code and fails with "server is older than HEAD: `launchctl kickstart -k gui/501/com.nagarkar.<app>.serve`". A merge that skipped the restart is caught by the next `doctor` run instead of by the owner. (Ruled 2026-10-05.)
-- A new app takes the next free tailnet port and gets a row in this table, a launch agent, and a sandbox script before its first UI change.
+- A new app takes the next free tailnet port and gets a row in the owner's table (`~/.claude/CLAUDE.md`), a launch agent, and a sandbox script before its first UI change.
 
 ## tailscale serve
 - `tailscale serve` changes exposure: run it only on the owner's word in chat.

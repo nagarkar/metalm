@@ -2,21 +2,21 @@
 
 @~/.claude/metalm/guidelines/index.md
 
-<One paragraph: what this repo is.>
+<One paragraph: what this repo is, who uses it, and the repos or services it depends on.>
 
 ## Commands
 
+- Install: `<command>`
 - Test: `<command>`
 - Lint: `<command>`
 - CLI: `<launcher> <verb>`; see `.claude/skills/<repo>/SKILL.md`.
-- Docs: `docs/generated/index.md` (areas, `(owner)` decisions, glossary, CUJs); generated, never edited.
-- Hooks: `pre-commit install` once per checkout.
 
-## Repo notes
+## Exceptions to metalm
 
-- Exceptions to metalm: each is an `(owner)` rule in the package docstring (or `docs/design/`) that decides it.
+- None.
+<!-- One line each: the metalm rule this repo departs from, and where the (owner) rule deciding it lives. -->
 
 ## Agent skills
 
-- Issue tracker: GitHub issues on this private repo. See `docs/agents/issue-tracker.md`.
+- Issue tracker: GitHub issues on `nagarkar/<repo>`. See `docs/agents/issue-tracker.md`.
 - Triage labels: defaults. See `docs/agents/triage-labels.md`.

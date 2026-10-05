@@ -63,7 +63,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - Move docs into code per guidelines/design.md#moving-a-repo-to-docs-in-code: area docs → package docstrings; module maps → import contracts; owner rulings → `(owner)` rules (only those already the owner's); requirements → `cuj` markers on e2e tests, or a `ready-for-human` issue when no test exists. Each step deletes what it replaces; meaning moves, never vanishes silently.
 - `CONTEXT.md` and glossaries → `Terms:` in the owning package docstrings. `docs/adr/`, numbered logs, design docs → `(owner)` rules or code; D-number citations in code → the package name. Backlog files → GitHub issues.
 - Hooks and docs: write `.pre-commit-config.yaml` and `.github/workflows/docs.yml` from templates, add the staleness test, ask the owner to approve the hook file (first time only), then `pre-commit install` (a committed `core.hooksPath` hook moves into the config as a local hook; `git config --unset core.hooksPath`). Regenerate `docs/generated/`.
-- `AGENTS.md` content → `CLAUDE.md`; then `ln -s CLAUDE.md AGENTS.md`.
+- `CLAUDE.md` is rewritten from `templates/CLAUDE.md`. Sort every existing line (from `CLAUDE.md` and `AGENTS.md`): a metalm rule → delete; a command → Commands; a departure from metalm → one line under Exceptions, pointing to its `(owner)` rule; anything else about the repo → its package docstring or the repo skill. Then `ln -s CLAUDE.md AGENTS.md`.
 - Write `docs/agents/*` and `.vscode/extensions.json` from templates. Delete `docs/agents/domain.md`.
 - Create the five triage labels on the GitHub repo before filing any issue (a `ready-for-human` issue fails without them): `for l in needs-triage needs-info ready-for-agent ready-for-human wontfix; do gh label create "$l" --force; done`.
 - Old path cited anywhere (code comments, docs, memory) → leave a one-line pointer stub at the old path.
@@ -78,7 +78,8 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 ## Phase 6 — Conformance
 
 ### 6a Structure — report each as pass / fail / excepted, with path:
-- [ ] `CLAUDE.md` contains `@~/.claude/metalm/guidelines/index.md`; `AGENTS.md` is a symlink to it or absent.
+- [ ] `CLAUDE.md` exists, contains `@~/.claude/metalm/guidelines/index.md`, and has exactly the template's sections (`## Commands`, `## Exceptions to metalm`, `## Agent skills`); `AGENTS.md` is a symlink to it or absent.
+- [ ] No `CLAUDE.md` line restates a metalm rule (judge each line against `guidelines/index.md` and the guideline it echoes); every Exceptions line points to an `(owner)` rule.
 - [ ] No `CONTEXT.md`, `docs/adr/`, `.scratch/`, `docs/agents/domain.md`, numbered decision log (stubs excepted).
 - [ ] No `docs/requirements/`, `backlog.md`, Changes sections or dated rulings ("Ruled YYYY-MM-DD") in docs or docstrings.
 - [ ] Every area package has a docstring; import contracts exist where the ecosystem supports them and pass.

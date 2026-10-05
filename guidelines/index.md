@@ -25,7 +25,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 
 ## Repo layout
 
-- `CLAUDE.md` is the one loaded file; `AGENTS.md` is a symlink to it.
+- `CLAUDE.md` is the one loaded file; `AGENTS.md` is a symlink to it. It follows the `metalm-setup` template and nothing else: the import line, what the repo is, its commands, its exceptions to metalm (each pointing to its `(owner)` rule), and agent-skill pointers. It never restates a metalm rule; repo knowledge lives in the code, the skill or the generated docs. (owner)
 - The code is the design and the requirements (owner): area docs are package docstrings; decisions that span modules are inline rules marked `(owner)`, one answer per question, no dates or history (git keeps it); CUJs are markers on e2e tests. All of it is generated into `docs/generated/` (committed; never hand-edited). `docs/design/` only for decisions no code owns. Details: `design.md`, `requirements.md`.
 - Work items are GitHub issues (`gh`). Issues are transient deltas; the code is the truth.
 - Never create `CONTEXT.md`, `docs/adr/`, `docs/requirements/`, `.scratch/`, `backlog.md`, or a numbered decision log.

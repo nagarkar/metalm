@@ -49,7 +49,7 @@ Priority when choosing what to add: core path with no test; error path never exe
 | Property-based | parsers, math, invariants | generator + invariant, not examples |
 | Parity | surfaces (CLI, MCP, skill, pages) | walk the parser: every leaf verb resolves to a named API function; MCP exposes exactly the curated set |
 | Shape | CLI/schema/style | every leaf has description + example; `help` lists every leaf; `--json` parses and has `next`; public defs typed + docstring; every schema has a valid and invalid doc, every property a description |
-| Reference parity | refactors, ported engines | same decisions as the old code/reference engine on seeded data; existing tests unchanged; env skip flag in the test module (e.g. `TRADELM_SKIP_ZIPLINE_PARITY=1`) |
+| Reference parity | refactors, ported engines | same decisions as the old code/reference engine on seeded data; existing tests unchanged; env skip flag in the test module (e.g. `<REPO>_SKIP_<ENGINE>_PARITY=1`) |
 | Tripwire / policy | cost, outbound, boundaries | docstring says editing the test is the act that changes the policy |
 | Schema-vs-doc | documented schemas | fails if the doc's schema differs from code DDL |
 | Graph-vs-code drift | dependency graphs | build order equals declared graph; every built node declared; every shipped node has a builder; edge × change-kind table |

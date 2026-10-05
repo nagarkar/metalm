@@ -18,7 +18,7 @@ Scope: served apps on this Mac, their servers and launch agents, scheduled and u
 - The page the owner looks at is the app's one real server. A running server keeps the code it started with, so a change does not exist for the owner until that server is restarted onto it.
 - One local server process per app hosts all its pages (job UI, dashboard, approvals); no cloud hosting until missed runs prove a need. One server per unit of work where the app has units (e.g. gamelm: one SKU per server, named on the command line).
 - `doctor` checks Tailscale is connected and prints the URL. It should warm the cert: the first HTTPS hit takes ~12 s.
-- `doctor` checks the real server is not older than its code: it compares the server process's start time with the newest commit touching served code and fails with "server is older than HEAD: `launchctl kickstart -k gui/501/com.nagarkar.<app>.serve`". A merge that skipped the restart is caught by the next `doctor` run instead of by the owner. (Proposed 2026-10-03: tradelm #14 merged two minutes after the last restart and never went live.)
+- `doctor` checks the real server is not older than its code: it compares the server process's start time with the newest commit touching served code and fails with "server is older than HEAD: `launchctl kickstart -k gui/501/com.nagarkar.<app>.serve`". A merge that skipped the restart is caught by the next `doctor` run instead of by the owner. (Proposed 2026-10-03.)
 - A new app takes the next free tailnet port and gets a row in this table, a launch agent, and a sandbox script before its first UI change.
 
 ## tailscale serve
@@ -137,8 +137,8 @@ Go down the list for the job's type whenever a scheduled job is created or chang
 
 ## Browser checks
 - Check pages in real Chrome, driven with `mcp__claude-in-chrome__*`, at desktop width and at 375 px mobile width.
-- This holds for diagnosis too. When the owner reports a page as missing or broken, check it in real Chrome or with `curl` against the tailnet URL, never the Browser pane: its blocked fetches look like a broken page and send the diagnosis the wrong way (2026-10-03).
-- Observed 2026-10-03 (proposed exception, to confirm): the pane blocked fetches only on the tailnet name; on `http://127.0.0.1:<port>` they worked. Its `mobile` preset is then the one true 375 px check: real Chrome will not size a window below ~500 px, and headless Chrome renders at 500 px whatever `--window-size` says. Use it on loopback for layout only, read-only, and say so.
+- This holds for diagnosis too. When the owner reports a page as missing or broken, check it in real Chrome or with `curl` against the tailnet URL, never the Browser pane: its blocked fetches look like a broken page and send the diagnosis the wrong way.
+- Proposed exception, to confirm: the pane blocked fetches only on the tailnet name; on `http://127.0.0.1:<port>` they worked. Its `mobile` preset is then the one true 375 px check: real Chrome will not size a window below ~500 px, and headless Chrome renders at 500 px whatever `--window-size` says. Use it on loopback for layout only, read-only, and say so.
 - Beyond "it renders", the check answers the readability questions in `ui.md`.
 - The Claude desktop Browser pane (`mcp__Claude_Browser__*`) cannot run local fetch-based apps: every fetch and API POST fails `net::ERR_BLOCKED_BY_CLIENT`. Never use it to check a served app. It also suppresses native `confirm()`, so pages use inline confirms.
 - The in-app preview renders local files statically; Chrome tools cannot click inside an Artifact frame. Verify Artifact page logic with a headless jsdom harness (optional dev check behind a node/jsdom presence test).

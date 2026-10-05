@@ -232,6 +232,7 @@ Rules:
 
 ### Harness facts
 - Agents/skills load at session start; testing a new one needs a new session. A skill missing from the listing can be followed by reading `~/.claude/skills/<name>/SKILL.md`. A globally installed skill runs commands from its home repo. A missing repo-defined agent type: launch `general-purpose` with the agent file's body as the prompt. Never route repo docs through a global skill whose hardcoded path is machine-specific; open the in-repo folder.
+- Sandboxed Bash lacks model keys and the `claude` CLI; key-needing commands run in the owner's terminal. Tailscale commands run unsandboxed.
 - Commands that read stdin run with `< /dev/null`; long commands (>3 min) run in the background with a long timeout.
 - Run heavy installs sequentially; check resources after heavy steps. Editable installs point at the main checkout: a worktree agent sets `PYTHONPATH=<worktree>/src`.
 - Claude takes no audio input: ask over metrics plus a transcript excerpt.

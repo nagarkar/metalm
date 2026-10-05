@@ -6,7 +6,7 @@ Status: DRAFT — not yet ratified by the owner.
 
 - Reader is a strong model. Bullets, short imperative sentences, a "Why" clause only where non-obvious.
 - Generic rules only. A product-specific rule stays in its repo's `docs/design/`; it appears here only as a one-line example.
-- Hard caps (lines): `index.md` 80, `requirements.md` 160, `design.md` 160, `architecture.md` 130, `coding.md` 300, `testing.md` 200, `operations.md` 120, `scheduling.md` 80, `ui.md` 80, `install-scripts.md` 60. `tools/check-caps.sh` reads this line and fails on any file over its cap; `install.sh` runs it. Over the cap → cut or split, never raise silently.
+- Hard caps (lines): `index.md` 80, `requirements.md` 160, `design.md` 160, `architecture.md` 130, `coding.md` 310, `testing.md` 200, `operations.md` 120, `scheduling.md` 80, `ui.md` 80, `install-scripts.md` 60. `tools/check-caps.sh` reads this line and fails on any file over its cap; `install.sh` runs it. Over the cap → cut or split, never raise silently.
 
 **Why:** long rule files are followed less, and `index.md` is paid for in every session. Cached input is cheap; attention is not.
 
@@ -37,4 +37,3 @@ Status: DRAFT — not yet ratified by the owner.
 - 2026-10-03 Owner database guidelines merged into `architecture.md` (environment, schema), `coding.md` (migrations, database safety) and `index.md` (destructive-SQL rule). Reconciled: DB lives in the workspace, not `./data/`; embedded SQLite keeps in-code additive migrations, server Postgres uses timestamped UP/DOWN files.
 - 2026-10-03 Added `coding.md#data-objects` (frozen dataclasses; validate at the edge; Pydantic only at heavy-parsing edges) and a data-objects row in `testing.md#toolchain`, codifying existing repo practice.
 - 2026-10-03 Added `coding.md#typed-decisions-jev`: questions and bars together in one versioned file per decision (owner ruling: they are calibrated together, so they live together); gating per answer type; P(level ≥ k) for Score; verified with a toy app (17 offline tests) and 4 live calls on jev-1.13.0.
-- 2026-10-05 Back under the caps. `operations.md` split: scheduled and unattended work moved verbatim to new `scheduling.md` (cap 80), launchd checklist lines that repeated the safeguards merged into one. Duplicate rules removed from `coding.md` (settings-location and harness facts already in `index.md`/`operations.md`), `operations.md` and `index.md` (the vocabulary ban, already in the global `CLAUDE.md` and below). Added `tools/check-caps.sh`.

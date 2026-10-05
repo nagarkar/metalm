@@ -41,6 +41,7 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 3. Check the change on the real server, read-only, in the browser, in every state the page draws differently (with and without a chosen item, default and custom settings). Look only: no clicks that write.
 4. For states the real data lacks, use the repo's sandbox script.
 5. Report what was checked, in which states, and anything that could not be checked.
+- Report a change as visible after the real server has been restarted with the change and checked.
 - Restart and check are part of "done". If the restart is not possible (no launch agent, permission missing), say so plainly and ask the owner to restart.
 
 ## Sandbox script
@@ -51,6 +52,7 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 - Change anything there; stop it when done. Its state is lost on next start.
 
 ## Boundaries
+- Stop the real server only by asking the owner to unload its agent (`launchctl bootout gui/501/com.nagarkar.<app>.serve`). A process killed by hand is restarted by launchd on the old code or leaves the port held.
 - No second server against an app's real data, ever. Two code versions on one database overwrite each other's caches, and the owner's server keeps showing the old code.
 - Keep an old surface (and its scheduled sync) running until the new one has carried a real session.
 
@@ -68,7 +70,7 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 - The in-app preview renders local files statically; Chrome tools cannot click inside an Artifact frame. Verify Artifact page logic with a headless jsdom harness (optional dev check behind a node/jsdom presence test).
 
 ## Sandboxed shell quirks
-- Sandboxed Bash lacks LLM keys and the `claude` CLI; LLM-dependent commands run in the owner's terminal. Install skills with `npx skills add … --copy`.
+- Install skills with `npx skills add … --copy`.
 - Browser-opening logins (OAuth) run via Bash, never MCP, and only on the owner's request in chat; say a browser will open first; long timeout (≥5 min). Only the `login` verb opens a browser; every other verb stops with "run <login>" when auth lapses.
 - Run heavy installs sequentially (parallel installs exhausted vnodes).
 

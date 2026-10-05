@@ -30,7 +30,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 - Work items are GitHub issues (`gh`, private repo). Issues are transient deltas; the markdown is the truth.
 - Never create `CONTEXT.md`, `docs/adr/`, `.scratch/`, or a numbered decision log.
 - Skills that say `CONTEXT.md` mean `docs/design/glossary.md`. Skills that say ADR or `docs/adr/` mean the named doc under `docs/design/` (add the decision there, dated Changes line). "Publish to the issue tracker" = create a GitHub issue; "fetch the ticket" = `gh issue view <n> --comments`.
-- "Set up a repo" / "make the repo compliant with guidelines" → `metalm-setup` skill (not `/setup-matt-pocock-skills`).
+- "Set up a repo" / "make the repo compliant with guidelines" → `metalm-setup` skill.
 
 ## Session
 

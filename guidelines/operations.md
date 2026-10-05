@@ -5,7 +5,11 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 ## Served apps (Ruled 2026-10-01)
 - Every app serves its page on loopback behind `tailscale serve`, all apps under one tailnet name, one HTTPS port each.
 - The tailnet name and the port table (app, tailnet HTTPS port, local server, launch agent) live in the owner's global `~/.claude/CLAUDE.md` under `## Served apps (this Mac)`, never in git. It is the one place ports are recorded. (owner)
-- User-specific details (host names, tailnet names, ports of this Mac, account ids, personal paths) never enter git: not in guidelines, skills, docs, tests or fixtures. Tests use placeholders such as `host.example.ts.net`; a skill says "the tailnet name in `~/.claude/CLAUDE.md`". (owner)
+- User-specific details (host names, tailnet names, this Mac's ports, account ids, personal paths, and any other names or tables that identify the owner or this machine) never enter git: not in guidelines, skills, docs, tests or fixtures. They live in exactly one of: (owner)
+  - the owner's global `~/.claude/CLAUDE.md`, one section per kind (`## Served apps (this Mac)`), for what every session may need;
+  - Claude's memory for the repo (`~/.claude/projects/<repo>/memory/`), for what only that repo's sessions need;
+  - the repo's gitignored `.env`, for values code reads at run time (keys, pointers).
+  Tests use placeholders such as `host.example.ts.net`; skills and docs point to the section by name ("the tailnet name in `~/.claude/CLAUDE.md`").
 - One port per app. Never map paths under one port: Tailscale forwards the prefix and pages use root-relative routes. Never use `--set-path`. Never take another app's port.
 - The app binds loopback only; `tailscale serve` fronts it. Answer only Host headers naming this machine (loopback, `*.ts.net`), else 421.
 - The page the owner looks at is the app's one real server. A running server keeps the code it started with, so a change does not exist for the owner until that server is restarted onto it.

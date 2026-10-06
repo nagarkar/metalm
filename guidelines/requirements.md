@@ -4,7 +4,8 @@ Scope: what a repo's requirements are (CUJs generated from code), how to write a
 
 ## CUJs are generated from the code
 - A repo's requirements are the critical user journeys (CUJs) its code supports, generated into `docs/generated/cujs.md` (design.md#generated-docs). The code is primary; no hand-written file says what the system does. (owner)
-- A CUJ is declared on the end-to-end test that proves it. Python: `@pytest.mark.cuj("<journey>")`, the marker registered in `pyproject.toml`. Other languages: a tag the metalm extractor reads (TypeScript `// cuj: <journey>` above the test; Swift a `.tags(.cuj)` trait plus the journey as the test's display name). A journey with no test does not appear. (owner)
+- A CUJ is declared on the end-to-end test that proves it. Python: `@pytest.mark.cuj("<journey>")`, the marker registered in `pyproject.toml`. Other languages: a tag the metalm extractor reads (TypeScript `// cuj: <journey>` above the test; Rust a `/// cuj: <journey>` line in the `#[test]` fn's doc comment; Swift a `.tags(.cuj)` trait plus the journey as the test's display name). A journey with no test does not appear. (owner)
+- Each language's CUJ tag takes that language's idiomatic form for item metadata. (owner)
 - Wanted or planned behavior is a GitHub issue whose acceptance criteria are written as CUJs; it becomes a generated CUJ when its test lands.
 - `docs/requirements/` does not exist in a repo; this file is the guidance for writing CUJs. (owner)
 - Bugs, exploration and one-offs live only in issues. Closed issues are never the truth.

@@ -23,9 +23,12 @@ NODE_TEST_RE = re.compile(r"\.(test|spec)\.(ts|tsx|js|mjs|cjs)$")
 JSDOC_RE = re.compile(r"/\*\*(.*?)\*/", re.S)
 CUJ_COMMENT_RE = re.compile(r"^\s*//\s*cuj:\s*(?P<journey>.+?)\s*$")
 NODE_TEST_CALL_RE = re.compile(r"""^\s*(?:test|it)(?:\.\w+)?\(\s*(['"`])(?P<name>.+?)\1""")
+RUST_CUJ_RE = re.compile(r"^\s*///\s*cuj:\s*(?P<journey>.+?)\s*$")  # a line of the test fn's doc comment
+RUST_FN_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?P<name>\w+)")
+RUST_ROOT_STEMS = {"lib", "mod"}  # the file is its folder's module; main.rs keeps its own name
 # Languages metalm-gendocs does not read yet: extension -> name shown in index.md.
-UNCOVERED = {".swift": "Swift", ".go": "Go", ".rs": "Rust", ".kt": "Kotlin", ".java": "Java", ".rb": "Ruby", ".cs": "C#", ".cpp": "C++", ".c": "C"}
-SKIP_DIRS = {"__pycache__", "node_modules", ".venv", "build", "dist", ".git"}
+UNCOVERED = {".swift": "Swift", ".go": "Go", ".kt": "Kotlin", ".java": "Java", ".rb": "Ruby", ".cs": "C#", ".cpp": "C++", ".c": "C"}
+SKIP_DIRS = {"__pycache__", "node_modules", ".venv", "build", "dist", ".git", "target"}
 
 
 class GenDocsError(Exception):
@@ -37,6 +40,7 @@ class Config:
     src: str = "src"
     tests: str = "tests"
     out: str = "docs/generated"
+    roots: tuple[str, ...] = ()  # extra source roots, walked like src; their modules are named by path
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +76,11 @@ def load_config(root: Path) -> Config:
     if unknown:
         raise GenDocsError(f"pyproject.toml [tool.metalm-gendocs]: unknown key(s) {', '.join(unknown)}; known: {', '.join(sorted(known))}")
     for key, value in table.items():
-        if not isinstance(value, str):
+        if key == "roots":
+            if not (isinstance(value, list) and all(isinstance(v, str) for v in value)):
+                raise GenDocsError("pyproject.toml [tool.metalm-gendocs].roots must be a list of strings")
+            table[key] = tuple(value)
+        elif not isinstance(value, str):
             raise GenDocsError(f"pyproject.toml [tool.metalm-gendocs].{key} must be a string")
     return Config(**table)
 
@@ -99,6 +107,18 @@ def _jsdoc(path: Path) -> str:
         line = re.sub(r"^\s*\* ?", "", line)
         if line.strip() != "@packageDocumentation":
             lines.append(line.rstrip())
+    return "\n".join(lines).strip()
+
+
+def _rustdoc(path: Path) -> str:
+    """The `//!` inner doc comment that opens the file (inner attributes and blank lines may sit among it)."""
+    lines = []
+    for line in path.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.startswith("//!"):
+            lines.append(re.sub(r"^ ", "", stripped[3:]).rstrip())
+        elif stripped and not stripped.startswith("#!["):
+            break
     return "\n".join(lines).strip()
 
 
@@ -140,31 +160,54 @@ def _sections(doc: str) -> dict[str, list[str]]:
     return out
 
 
-def _is_node(root: Path) -> bool:
-    return (root / "package.json").is_file()
+def _in_node_project(root: Path, path: Path) -> bool:
+    """A Node file is read when a package.json sits in its folder or any folder above it, up to the repo root."""
+    for folder in path.parents:
+        if (folder / "package.json").is_file():
+            return True
+        if folder == root:
+            return False
+    return False
 
 
-def _sources(root: Path, cfg: Config) -> list[Path]:
-    """Python files, plus Node files (tests excluded) when the repo has a root package.json."""
-    src_root = root / cfg.src
-    found = _walk(src_root, (".py",))
-    if _is_node(root):
-        found += [p for p in _walk(src_root, NODE_EXTS) if not NODE_TEST_RE.search(p.name)]
-    return sorted(found)
+def _source_roots(root: Path, cfg: Config) -> list[Path]:
+    return [root / cfg.src] + [root / extra for extra in cfg.roots]
+
+
+def _sources(root: Path, cfg: Config) -> list[tuple[Path, Path]]:
+    """(source root, file) for Python files, Rust files, and Node files inside a Node project; tests excluded."""
+    found = []
+    for base in _source_roots(root, cfg):
+        found += [(base, p) for p in _walk(base, (".py", ".rs"))]
+        found += [(base, p) for p in _walk(base, NODE_EXTS) if not NODE_TEST_RE.search(p.name) and _in_node_project(root, p)]
+    return sorted(found, key=lambda pair: pair[1])
 
 
 def _is_area(src_root: Path, path: Path) -> bool:
     rel = path.relative_to(src_root).parts
     if path.suffix == ".py":
         return path.name == "__init__.py" or len(rel) == 2
+    if path.suffix == ".rs":
+        return path.stem in RUST_ROOT_STEMS | {"main"} or len(rel) == 1
     return path.stem == "index" or len(rel) == 1
 
 
 def _node_module_name(src_root: Path, path: Path) -> str:
+    """Path-style name for Node and Rust files: `index` (Node), `lib` and `mod` (Rust) name their folder."""
     parts = list(path.relative_to(src_root).with_suffix("").parts)
-    if parts[-1] == "index":
+    folder_stems = RUST_ROOT_STEMS if path.suffix == ".rs" else {"index"}
+    if parts[-1] in folder_stems:
         parts.pop()
     return "/".join(parts) or "(root)"
+
+
+def _name(root: Path, cfg: Config, src_root: Path, path: Path) -> str:
+    """Module name: dotted for Python, path-style for Node and Rust; in an extra root, prefixed by that root's path."""
+    if src_root != root / cfg.src:
+        name = _node_module_name(src_root, path)
+        base = src_root.relative_to(root).as_posix()
+        return base if name == "(root)" else f"{base}/{name}"
+    return _module_name(src_root, path) if path.suffix == ".py" else _node_module_name(src_root, path)
 
 
 def _cuj_journey(decorator: ast.expr) -> ast.expr | None:
@@ -210,11 +253,39 @@ def _cujs(root: Path, cfg: Config) -> list[Cuj]:
     return sorted(found, key=lambda c: (c.test_id, c.journey))
 
 
-def _node_cujs(root: Path, cfg: Config) -> list[Cuj]:
-    """`// cuj: <journey>` on the line above a `test(...)` or `it(...)` call."""
-    if not _is_node(root):
-        return []
-    files = {p for base in (root / cfg.tests, root / cfg.src) for p in _walk(base, NODE_EXTS) if NODE_TEST_RE.search(p.name)}
+def _comment_cujs(root: Path, cfg: Config) -> list[Cuj]:
+    """`// cuj: <journey>` above a Node `test(...)`/`it(...)` call; `/// cuj: <journey>` in a Rust `#[test]` fn's doc comment."""
+    bases = [root / cfg.tests] + _source_roots(root, cfg)
+    node = {p for base in bases for p in _walk(base, NODE_EXTS) if NODE_TEST_RE.search(p.name) and _in_node_project(root, p)}
+    rust = {p for base in bases for p in _walk(base, (".rs",))}
+    return _node_cujs(root, node) + _rust_cujs(root, rust)
+
+
+def _rust_cujs(root: Path, files: set[Path]) -> list[Cuj]:
+    found: list[Cuj] = []
+    for path in sorted(files):
+        rel = path.relative_to(root).as_posix()
+        lines = path.read_text().splitlines()
+        for number, line in enumerate(lines, 1):
+            if CUJ_COMMENT_RE.match(line):
+                raise GenDocsError(f"{rel}:{number}: a Rust CUJ is a doc line on the test: '/// cuj: <journey>'")
+            match = RUST_CUJ_RE.match(line)
+            if not match:
+                continue
+            following = [text.strip() for text in lines[number:] if text.strip()]
+            attrs = []
+            while following and following[0].startswith(("#[", "///")):
+                item = following.pop(0)
+                if item.startswith("#["):
+                    attrs.append(item)
+            fn = RUST_FN_RE.match(following[0]) if following else None
+            if fn is None or not any(re.fullmatch(r"#\[(?:\w+::)*test\]", a) for a in attrs):
+                raise GenDocsError(f"{rel}:{number}: '/// cuj:' must document a #[test] fn")
+            found.append(Cuj(" ".join(match.group("journey").split()), f"{rel}::{fn.group('name')}"))
+    return found
+
+
+def _node_cujs(root: Path, files: set[Path]) -> list[Cuj]:
     found: list[Cuj] = []
     for path in sorted(files):
         rel = path.relative_to(root).as_posix()
@@ -223,7 +294,7 @@ def _node_cujs(root: Path, cfg: Config) -> list[Cuj]:
             match = CUJ_COMMENT_RE.match(line)
             if not match:
                 continue
-            following = next((l for l in lines[number:] if l.strip()), "")
+            following = next((text for text in lines[number:] if text.strip()), "")
             call = NODE_TEST_CALL_RE.match(following)
             if call is None:
                 raise GenDocsError(f"{rel}:{number}: '// cuj:' must sit on the line above a test(...) or it(...) call with a string name")
@@ -234,20 +305,19 @@ def _node_cujs(root: Path, cfg: Config) -> list[Cuj]:
 def _uncovered(root: Path, cfg: Config) -> dict[str, int]:
     """Source and test files in languages the generator does not read: name -> file count."""
     counts: dict[str, int] = {}
-    for base in (root / cfg.src, root / cfg.tests):
+    for base in [root / cfg.tests] + _source_roots(root, cfg):
         for path in _walk(base, tuple(UNCOVERED)):
             counts[UNCOVERED[path.suffix]] = counts.get(UNCOVERED[path.suffix], 0) + 1
     return counts
 
 
 def _extract(root: Path, cfg: Config) -> tuple[list[Area], list[Entry], list[Entry]]:
-    src_root = root / cfg.src
     areas: list[Area] = []
     decisions: list[Entry] = []
     terms: list[Entry] = []
-    for path in _sources(root, cfg):
-        doc = _docstring(path) if path.suffix == ".py" else _jsdoc(path)
-        module = _module_name(src_root, path) if path.suffix == ".py" else _node_module_name(src_root, path)
+    for src_root, path in _sources(root, cfg):
+        doc = {".py": _docstring, ".rs": _rustdoc}.get(path.suffix, _jsdoc)(path)
+        module = _name(root, cfg, src_root, path)
         rel = path.relative_to(root).as_posix()
         if _is_area(src_root, path):
             never = ""
@@ -278,7 +348,7 @@ def _render_index(areas: list[Area], uncovered: dict[str, int]) -> str:
         lines += [
             "## Not covered",
             "",
-            f"metalm-gendocs reads Python and TypeScript/JavaScript only; it skipped {listed}.",
+            f"metalm-gendocs reads Python, Rust and TypeScript/JavaScript only; it skipped {listed}.",
             "Agent: ask the owner whether to add each language to metalm-gendocs; on yes, file a metalm issue naming its doc-comment convention, test framework and this repo.",
             "",
         ]
@@ -352,7 +422,7 @@ def generate(root: Path) -> dict[str, str]:
         (out / "index.md").as_posix(): _render_index(areas, _uncovered(root, cfg)),
         (out / "decisions.md").as_posix(): _render_decisions(decisions),
         (out / "glossary.md").as_posix(): _render_glossary(terms),
-        (out / "cujs.md").as_posix(): _render_cujs(sorted(_cujs(root, cfg) + _node_cujs(root, cfg), key=lambda c: (c.test_id, c.journey))),
+        (out / "cujs.md").as_posix(): _render_cujs(sorted(_cujs(root, cfg) + _comment_cujs(root, cfg), key=lambda c: (c.test_id, c.journey))),
     }
 
 

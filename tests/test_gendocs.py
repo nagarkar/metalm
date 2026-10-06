@@ -226,14 +226,90 @@ def test_node_files_ignored_without_package_json(repo: Path) -> None:
 
 def test_uncovered_languages_are_listed_for_the_agent_to_raise(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     put(repo, "src/native/Bridge.swift", "// swift\n")
-    put(repo, "src/native/lib.rs", "// rust\n")
+    put(repo, "src/native/main.go", "// go\n")
     index = generate(repo)["docs/generated/index.md"]
-    assert "## Not covered" in index and "Rust (1 files), Swift (1 files)" in index
+    assert "## Not covered" in index and "Go (1 files), Swift (1 files)" in index
     assert "ask the owner whether to add each language" in index
     main(["--root", str(repo)])
-    assert "not covered: Rust, Swift" in capsys.readouterr().err
+    assert "not covered: Go, Swift" in capsys.readouterr().err
 
 
 def test_wrapped_never_imports_keeps_its_continuation_lines(repo: Path) -> None:
     put(repo, "src/shop/web.py", '"""Web: the HTTP surface.\n\nNever imports: shop.orders,\n    shop.payments\n"""\n')
     assert "Never imports: shop.orders, shop.payments" in generate(repo)["docs/generated/index.md"]
+
+
+@pytest.fixture
+def rust_repo(tmp_path: Path) -> Path:
+    put(tmp_path, "pyproject.toml", '[tool.metalm-gendocs]\nroots = ["app/src-tauri/src", "app/src"]\n')
+    put(tmp_path, "app/src-tauri/src/lib.rs", '''
+        #![allow(dead_code)]
+        //! Studio: turns manifests into audio.
+        //!
+        //! Never imports: ui
+        //!
+        //! Decisions:
+        //! - The app writes only state files. (owner)
+        //!
+        //! Terms:
+        //! - **take**: one rendered clip of a sentence.
+
+        pub mod stitch;
+    ''')
+    put(tmp_path, "app/src-tauri/src/stitch.rs", '''
+        //! Stitch: joins takes into a chapter.
+
+        // cuj: The owner stitches a chapter in the app, and sees one file per chapter.
+        #[test]
+        #[ignore]
+        fn stitches_a_chapter() {}
+
+        /// Not a module doc.
+        fn helper() {}
+    ''')
+    put(tmp_path, "app/src-tauri/target/debug/build.rs", "//! Build output: never read.\n")
+    put(tmp_path, "app/package.json", '{"name": "studio"}\n')
+    put(tmp_path, "app/src/index.ts", "/** @packageDocumentation\n * Studio UI: the window.\n */\nexport {};\n")
+    put(tmp_path, "app/src/__tests__/ui.test.ts", '// cuj: The owner opens a book in the app, and sees its chapters.\ntest("opens a book", () => {});\n')
+    return tmp_path
+
+
+def test_rust_inner_docs_feed_index_decisions_and_glossary(rust_repo: Path) -> None:
+    files = generate(rust_repo)
+    index = files["docs/generated/index.md"]
+    assert "## `app/src-tauri/src`" in index and "Studio: turns manifests into audio." in index
+    assert "Never imports: ui" in index
+    assert "## `app/src-tauri/src/stitch`" in index and "Stitch: joins takes into a chapter." in index
+    assert "Build output" not in index and "Not a module doc" not in index
+    assert "Not covered" not in index
+    assert "- `app/src-tauri/src`: The app writes only state files. (owner)" in files["docs/generated/decisions.md"]
+    assert "- **take** (`app/src-tauri/src`): one rendered clip of a sentence." in files["docs/generated/glossary.md"]
+
+
+def test_rust_cuj_comment_above_test_attribute(rust_repo: Path) -> None:
+    cujs = generate(rust_repo)["docs/generated/cujs.md"]
+    assert "sees one file per chapter. (`app/src-tauri/src/stitch.rs::stitches_a_chapter`)" in cujs
+
+
+def test_rust_cuj_comment_without_a_test_fails(rust_repo: Path) -> None:
+    put(rust_repo, "app/src-tauri/src/bad.rs", "// cuj: A journey with nothing under it.\nfn x() {}\n")
+    with pytest.raises(GenDocsError, match="app/src-tauri/src/bad.rs:1: '// cuj:'"):
+        generate(rust_repo)
+
+
+def test_node_project_below_the_root_is_read_from_an_extra_root(rust_repo: Path) -> None:
+    files = generate(rust_repo)
+    assert "## `app/src`" in files["docs/generated/index.md"] and "Studio UI: the window." in files["docs/generated/index.md"]
+    assert "sees its chapters. (`app/src/__tests__/ui.test.ts::opens a book`)" in files["docs/generated/cujs.md"]
+
+
+def test_nested_node_project_under_src_is_read(repo: Path) -> None:
+    put(repo, "src/shop/web/package.json", '{"name": "page"}\n')
+    put(repo, "src/shop/web/src/App.tsx", "/** App: the page.\n *\n * Decisions:\n * - The page polls; no sockets.\n */\nexport {};\n")
+    assert "- `shop/web/src/App`: The page polls; no sockets." in generate(repo)["docs/generated/decisions.md"]
+
+
+def test_roots_must_be_a_list_of_strings(repo: Path) -> None:
+    put(repo, "pyproject.toml", '[tool.metalm-gendocs]\nroots = "app"\n')
+    with pytest.raises(GenDocsError, match="roots must be a list of strings"):
+        generate(repo)

@@ -259,7 +259,9 @@ def rust_repo(tmp_path: Path) -> Path:
     put(tmp_path, "app/src-tauri/src/stitch.rs", '''
         //! Stitch: joins takes into a chapter.
 
-        // cuj: The owner stitches a chapter in the app, and sees one file per chapter.
+        /// cuj: The owner stitches a chapter in the app, and sees one file per chapter.
+        ///
+        /// Two takes in, one chapter file out.
         #[test]
         #[ignore]
         fn stitches_a_chapter() {}
@@ -286,14 +288,20 @@ def test_rust_inner_docs_feed_index_decisions_and_glossary(rust_repo: Path) -> N
     assert "- **take** (`app/src-tauri/src`): one rendered clip of a sentence." in files["docs/generated/glossary.md"]
 
 
-def test_rust_cuj_comment_above_test_attribute(rust_repo: Path) -> None:
+def test_rust_cuj_doc_line_on_the_test_fn(rust_repo: Path) -> None:
     cujs = generate(rust_repo)["docs/generated/cujs.md"]
     assert "sees one file per chapter. (`app/src-tauri/src/stitch.rs::stitches_a_chapter`)" in cujs
 
 
-def test_rust_cuj_comment_without_a_test_fails(rust_repo: Path) -> None:
-    put(rust_repo, "app/src-tauri/src/bad.rs", "// cuj: A journey with nothing under it.\nfn x() {}\n")
-    with pytest.raises(GenDocsError, match="app/src-tauri/src/bad.rs:1: '// cuj:'"):
+def test_rust_cuj_on_a_plain_fn_fails(rust_repo: Path) -> None:
+    put(rust_repo, "app/src-tauri/src/bad.rs", "/// cuj: A journey on a plain fn.\nfn x() {}\n")
+    with pytest.raises(GenDocsError, match="app/src-tauri/src/bad.rs:1: '/// cuj:' must document a #\\[test\\] fn"):
+        generate(rust_repo)
+
+
+def test_rust_plain_comment_cuj_names_the_doc_form(rust_repo: Path) -> None:
+    put(rust_repo, "app/src-tauri/src/bad.rs", "// cuj: Wrong form.\n#[test]\nfn x() {}\n")
+    with pytest.raises(GenDocsError, match="bad.rs:1: a Rust CUJ is a doc line"):
         generate(rust_repo)
 
 

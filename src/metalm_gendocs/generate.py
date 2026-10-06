@@ -23,6 +23,7 @@ NODE_TEST_RE = re.compile(r"\.(test|spec)\.(ts|tsx|js|mjs|cjs)$")
 JSDOC_RE = re.compile(r"/\*\*(.*?)\*/", re.S)
 CUJ_COMMENT_RE = re.compile(r"^\s*//\s*cuj:\s*(?P<journey>.+?)\s*$")
 NODE_TEST_CALL_RE = re.compile(r"""^\s*(?:test|it)(?:\.\w+)?\(\s*(['"`])(?P<name>.+?)\1""")
+RUST_CUJ_RE = re.compile(r"^\s*///\s*cuj:\s*(?P<journey>.+?)\s*$")  # a line of the test fn's doc comment
 RUST_FN_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?P<name>\w+)")
 RUST_ROOT_STEMS = {"lib", "mod"}  # the file is its folder's module; main.rs keeps its own name
 # Languages metalm-gendocs does not read yet: extension -> name shown in index.md.
@@ -253,7 +254,7 @@ def _cujs(root: Path, cfg: Config) -> list[Cuj]:
 
 
 def _comment_cujs(root: Path, cfg: Config) -> list[Cuj]:
-    """`// cuj: <journey>` above a Node `test(...)`/`it(...)` call, or above a Rust `#[test]` fn."""
+    """`// cuj: <journey>` above a Node `test(...)`/`it(...)` call; `/// cuj: <journey>` in a Rust `#[test]` fn's doc comment."""
     bases = [root / cfg.tests] + _source_roots(root, cfg)
     node = {p for base in bases for p in _walk(base, NODE_EXTS) if NODE_TEST_RE.search(p.name) and _in_node_project(root, p)}
     rust = {p for base in bases for p in _walk(base, (".rs",))}
@@ -266,16 +267,20 @@ def _rust_cujs(root: Path, files: set[Path]) -> list[Cuj]:
         rel = path.relative_to(root).as_posix()
         lines = path.read_text().splitlines()
         for number, line in enumerate(lines, 1):
-            match = CUJ_COMMENT_RE.match(line)
+            if CUJ_COMMENT_RE.match(line):
+                raise GenDocsError(f"{rel}:{number}: a Rust CUJ is a doc line on the test: '/// cuj: <journey>'")
+            match = RUST_CUJ_RE.match(line)
             if not match:
                 continue
             following = [text.strip() for text in lines[number:] if text.strip()]
             attrs = []
-            while following and following[0].startswith("#["):
-                attrs.append(following.pop(0))
+            while following and following[0].startswith(("#[", "///")):
+                item = following.pop(0)
+                if item.startswith("#["):
+                    attrs.append(item)
             fn = RUST_FN_RE.match(following[0]) if following else None
             if fn is None or not any(re.fullmatch(r"#\[(?:\w+::)*test\]", a) for a in attrs):
-                raise GenDocsError(f"{rel}:{number}: '// cuj:' must sit above a #[test] fn")
+                raise GenDocsError(f"{rel}:{number}: '/// cuj:' must document a #[test] fn")
             found.append(Cuj(" ".join(match.group("journey").split()), f"{rel}::{fn.group('name')}"))
     return found
 

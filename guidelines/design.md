@@ -32,6 +32,8 @@ Terms:
 ```
 - Module map: prefer an import contract where the language or its open-source ecosystem has one (Python `import-linter`, contracts in `pyproject.toml`; Node `dependency-cruiser`; Swift, Go, Rust: the module system). Otherwise write `Never imports:` in the docstring. The contract runs in the test suite. (owner)
 - A term is defined in the docstring of the package that owns it; a term several packages use belongs to the package that defines its data. (owner)
+- The glossary holds only names the code or its adjacent docs use: a table or entity, or the specific process that produces one. Each term is explicit: it spells out what the thing is (`transcript-cleanup`, not `pass 3`). A term that needs a lookup to decode is renamed in the code, then here. (owner)
+- Do not invent a term where an existing one fits (`build step`, not a new `slice`); search the glossary and code first. Never define or use a word that can mean almost anything (`source`, `style`, `item`, `type`) bare: say which kind (`playlist`, `caption track`, `writing style`). (owner)
 - Name settings, verbs and files with their location (file path, line for code).
 
 ## Generated docs

@@ -1,6 +1,6 @@
 ---
 name: metalm-setup
-description: Set up a repo to metalm guidelines, adopt metalm in an existing repo with its deviations grandfathered, check conformance, or make a repo fully compliant — creates the standard layout, moves and revises docs, grills the owner on repo-specific choices, and proves nothing was lost. Use when the user says "set up a repo", "make the repo compliant with guidelines", "adopt metalm", "grandfather this repo", "check conformance with metalm" or "metalm check". Replaces /setup-matt-pocock-skills.
+description: Set up a repo to metalm guidelines, adopt metalm in an existing repo with its deviations grandfathered, check conformance, or make a repo fully compliant — creates the standard layout, moves and revises docs, grills the owner on repo-specific choices, and proves nothing was lost. Use when the user says "set up a repo", "make the repo compliant with guidelines", "adopt metalm", "grandfather this repo", "check conformance with metalm", "metalm check" or "audit the metalm repos". Replaces /setup-matt-pocock-skills.
 ---
 
 # metalm-setup
@@ -10,6 +10,7 @@ Brings one repo to the layout and rules in `~/.claude/metalm/guidelines/`. Read 
 Modes:
 - **setup** (default; "set up a repo", "make the repo compliant with guidelines"): phases 1–7, ends in one PR. Removes grandfathered exceptions it resolves.
 - **adopt** ("adopt metalm", "grandfather this repo"): opt in now, conform later. Phases 1 and 6, then on a branch: add the import line to `CLAUDE.md` (create it, `AGENTS.md` content merged, `AGENTS.md` symlinked), and record every phase-6 failure as a row under `## Grandfathered exceptions` in `docs/design/exceptions.md`: `| <rule> | <guideline>.md#<section> | <where in repo> | adopted <YYYY-MM-DD> |`. Moves no content. One PR. New work follows metalm.
+- **audit** ("audit the metalm repos", "are all repos still compliant", after a guideline change): read `docs/repos.md` in metalm. For every repo whose row is `unchecked` or whose `checked against` commit is older than the last commit that changed `guidelines/` (`git log -1 --format=%H -- guidelines`), run check mode on that repo (one subagent per repo, report only, nothing changed there), then phase 8 for each. Report a table: repo, status, new failures since its last check. Offer a recurring schedule (`/schedule`, scheduling.md) when none exists; never create one unasked.
 - **check** ("metalm check", "check conformance with metalm"): phases 1 and 6. Report only; change nothing. A failure listed as a grandfathered exception reports as `excepted`, not `fail`.
 
 ## Target layout
@@ -104,8 +105,15 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 
 - Commit in logical steps (move, revise, add). Push branch, open one PR. Body: summary, link to inventory issue and mapping comment, checklist results, list of owner decisions from phase 3. Never push to main.
 
+## Phase 8 — Record in metalm (every mode, pass or fail)
+
+- After the repo's own PR is open (or, in check mode, the report is done), update that repo's row in `docs/repos.md` in the metalm checkout: status, the metalm commit the run read (`git -C ~/.claude/metalm rev-parse HEAD`), today's date, the repo PR link, and the open failures or exceptions in a few words.
+- Do it on a branch `conformance-<repo>` in metalm and open a PR titled `<repo>: <status> (<date>)`; the body lists the failures. A run that failed or stopped halfway still records `attempted`. Never push to metalm `main`; the owner merges.
+- The row is the only thing this phase edits. Guideline changes it suggests become separate metalm PRs.
+
 ## Why it works this way
 
+- The registry lets a guideline change be checked against every repo (audit mode) instead of being found one repo at a time.
 - Inventory before edits makes loss detectable; a separate mapper cannot excuse its own rewrite.
 - Content checks run one subagent per guideline in `guidelines/index.md`, so a new guideline extends every check.
 - metalm's own setup skill replaces Matt Pocock's: two setup skills writing the same files conflict. Matt's process skills stay, with the mappings in `guidelines/design.md#matt-pocock-skill-mapping`.

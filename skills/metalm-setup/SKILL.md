@@ -27,7 +27,7 @@ docs/design/<topic>.md        only decisions no code owns (other repos, outside 
 tests/test_generated_docs.py  fails when regenerating would change docs/generated/
 docs/agents/issue-tracker.md  templates/issue-tracker.md (read by /review, /triage, /to-issues)
 docs/agents/triage-labels.md  templates/triage-labels.md
-.claude/skills/<repo>/SKILL.md teaches agents the repo CLI
+.claude/skills/<repo>/SKILL.md teaches agents the repo CLI, ends with `## Merging` (templates/skill-merging.md)
 .vscode/extensions.json       recommends bierner.markdown-mermaid
 ```
 
@@ -65,6 +65,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - `CONTEXT.md` and glossaries → `Terms:` in the owning package docstrings. `docs/adr/`, numbered logs, design docs → `(owner)` rules or code; D-number citations in code → the package name. Backlog files → GitHub issues.
 - Hooks and docs: write `.pre-commit-config.yaml` and `.github/workflows/docs.yml` from templates, add the staleness test, ask the owner to approve the hook file (first time only), then `pre-commit install` (a committed `core.hooksPath` hook moves into the config as a local hook; `git config --unset core.hooksPath`). Regenerate `docs/generated/`.
 - `CLAUDE.md` is rewritten from `templates/CLAUDE.md`. Sort every existing line (from `CLAUDE.md` and `AGENTS.md`): a metalm rule → delete; a command → Commands; a departure from metalm → one line under Exceptions, pointing to its `(owner)` rule; anything else about the repo → its package docstring or the repo skill. Then `ln -s CLAUDE.md AGENTS.md`.
+- Write the repo skill's `## Merging` section from `templates/skill-merging.md` (today's date) so a session that loads the repo skill but not metalm still knows the standing merge authorization and when to ask the owner to revisit it. Ask the owner first whether to grant it; if the repo is shared, leave the section as `merge only on the owner's word`.
 - Write `docs/agents/*` and `.vscode/extensions.json` from templates. Delete `docs/agents/domain.md`.
 - Create the five triage labels on the GitHub repo before filing any issue (a `ready-for-human` issue fails without them): `for l in needs-triage needs-info ready-for-agent ready-for-human wontfix; do gh label create "$l" --force; done`.
 - Old path cited anywhere (code comments, docs, memory) → leave a one-line pointer stub at the old path.
@@ -93,7 +94,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - [ ] No "refusal"/"refuse"/"refuses" in docs (`grep -rniw 'refus\w*' docs CLAUDE.md`).
 - [ ] `docs/agents/issue-tracker.md` says GitHub; `.vscode/extensions.json` lists the Mermaid extension.
 - [ ] The GitHub repo has the five triage labels (`gh label list`: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`).
-- [ ] Repo skill exists at `.claude/skills/<repo>/SKILL.md`.
+- [ ] Repo skill exists at `.claude/skills/<repo>/SKILL.md` and ends with `## Merging` stating either the standing authorization with its revisit trigger or "merge only on the owner's word". A repo with a second contributor or user that still carries the authorization fails: ask the owner to update it.
 - [ ] Test suite runs green (command recorded in `CLAUDE.md`).
 
 ### 6b Content — every guideline

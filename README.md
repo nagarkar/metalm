@@ -16,6 +16,7 @@ Engineering rules for the `*lm` repos, plus the skill that brings a repo into li
 | `src/metalm_gendocs/`, `.pre-commit-hooks.yaml` | The `metalm-gendocs` pre-commit hook: generates `docs/generated/` from code |
 | `examples/` | Tested reference code cited by guidelines |
 | `skills/metalm-setup/` | "Set up a repo" / "make the repo compliant with guidelines" |
+| `docs/repos.md` | Which repos import metalm, and how each last checked out (written by `metalm-setup` phase 8) |
 | `docs/generated/` | metalm-gendocs output for its own code (generated, never edited) |
 
 ## Install

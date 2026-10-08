@@ -20,7 +20,13 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Build on libraries. Reference implementations are read-only shallow clones under `repos/reference/`: read their schema/states/validations, then design your own; pick the one tool that writes the required output natively over adding a conversion stage; never paste GPL code; no heavy runtime (Docker, MariaDB, Redis). Do not reimplement another system's features; switch off the unwanted ones per instance (e.g. a vendor's auto-cutter that conflicts with your own timeline).
 - YAGNI for machinery: no gate machinery where nothing structured exists to fingerprint (finer caches + git history suffice); no scaffold command while a doc's shape still moves; no app affordances (badges, job consoles, agent frameworks) where cheap deterministic verbs an agent calls will do.
 - Remove unused parameters; split a signature that encodes a now-false assumption.
-- Full names for identifiers and config keys (`age_of_acquisition_years`), or a comment giving the full form.
+
+### Names
+(owner, 2026-10-08) Every rule in this section is the owner's. The owner cannot remember code words: a name must explain itself to someone who has never seen the code.
+- Spell every word out in variables, functions, classes, files, config keys, CLI verbs, flags, board keys and test names. No abbreviations or initialisms (`cfg`, `ws`, `pct`) beyond `id`, `url`, `db`, `usd`. A stage number or internal code word (`pass3`, `D7`) is never a name: name what it does (`needs_ai_cleanup`).
+- A name says what it holds or does, with its unit (`timeout_seconds`, `estimate_usd`). A list or count says what is in it (`videos_never_fetched`, not `queued`); one word never means two things. A long clear name beats a short cryptic one; single letters only as a loop index.
+- CLI flags are long words (`--corpus`); a short alias only beside the spelled-out flag. What the author reads (help, boards, messages) uses the glossary's author-facing term, with the code word at most once in parentheses.
+- Rename a confusing name when you meet it, in its own change.
 
 ### Data objects
 - Plain typed data objects, no getters/setters. Python: `@dataclass(frozen=True, slots=True)`; change by `dataclasses.replace(obj, field=…)`. Mutable only for a short-lived builder inside one function.

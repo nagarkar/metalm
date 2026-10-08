@@ -40,8 +40,8 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 
 ## Git and work items
 
-- Branch for every change; never commit to `main` (the pre-commit hook `no-commit-to-branch` enforces it). Push `main`, force-push, or merge only on the owner's word in chat; record such authorizations with date and issue number.
-- One PR per change. Automation opens PRs; it never merges, approves, or closes them, except a commit or PR that changes only `docs/generated/`, which agents may merge. (owner)
+- Branch for every change; never commit to `main` (the pre-commit hook `no-commit-to-branch` enforces it). Push `main`, force-push, or merge only on the owner's word in chat, or under the standing authorization in the repo's skill (`## Merging`, written by `metalm-setup`; it names its exceptions and the point at which the owner must revisit it: a second contributor, user or shared service); record one-off authorizations with date and issue number. (owner)
+- One PR per change. Automation (CI, bots) opens PRs; it never merges, approves, or closes them, except a commit or PR that changes only `docs/generated/`, which agents may merge. (owner)
 - Commit after each completed step. Subject: one sentence of behavior change + `(#<issue>)`; `Closes #N` where it finishes.
 - `git status` before assuming a change landed. Never commit over the owner's uncommitted work.
 - Defects: structured report (evidence file:line, given/observed/expected, owner verdict verbatim), filed only on the owner's confirmation; issue first (records commit + data version), fix second. Mention a filed defect once; keep the defect queue out of domain briefings.

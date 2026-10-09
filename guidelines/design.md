@@ -99,7 +99,7 @@ One migration issue per repo, area by area; repos under active change first.
 - The reader is a strong model: bullets, short imperative sentences, a reason only where it is not obvious.
 - Generic rules only. A product-specific rule stays in its repo's code; it appears here at most as a one-line example.
 - One rule, one place: never the same rule in two guideline files; point to the other file instead.
-- Hard caps (lines): `index.md` 80, `requirements.md` 160, `design.md` 160, `architecture.md` 130, `coding.md` 310, `testing.md` 200, `operations.md` 120, `scheduling.md` 80, `ui.md` 80, `install-scripts.md` 60. `tools/check-caps.sh` reads this line and fails on any file over its cap; `install.sh` runs it. Over the cap → cut or split, raise only on the owner's word.
+- Hard caps (lines): `index.md` 80, `requirements.md` 160, `design.md` 160, `architecture.md` 130, `coding.md` 310, `cli.md` 80, `testing.md` 200, `operations.md` 120, `scheduling.md` 80, `ui.md` 80, `install-scripts.md` 60. `tools/check-caps.sh` reads this line and fails on any file over its cap; `install.sh` runs it. Over the cap → cut or split, raise only on the owner's word.
 - Why: long rule files are followed less, and `index.md` is paid for in every session.
 - A change edits the rule in place; git keeps the history. No Changes sections, no status lines.
 

@@ -14,7 +14,8 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 | plan a non-additive migration or a refactor spanning several PRs or repos | `coding.md#major-migrations-and-multi-step-refactors` |
 | share a database between repos, or point a repo at another repo's database | `coding.md#sharing-one-database-between-repos` |
 | put `.env` outside the checkout, share one between repos, or read a new environment variable | `coding.md#where-env-lives` |
-| write code, a CLI, skill, MCP server, or an LLM call | `coding.md` |
+| write or change a CLI verb, its help, completion, board, `setup` or `doctor` | `cli.md` |
+| write code, skill, MCP server, or an LLM call | `coding.md` |
 | write or change tests, or claim something works | `testing.md` |
 | move code between repos, or decide where a test belongs | `testing.md#where-tests-live` |
 | touch a served page, server, launch agent, Tailscale | `operations.md` |

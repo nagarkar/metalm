@@ -13,6 +13,7 @@ Scope: how every `*lm` repo's CLI is declared, documented, completed, printed an
 - An interactive shell (history, prompt, in-process verbs) is built only for a tool with a session to hold (authorlm); a stateless tool does not have one.
 
 ## Output and errors
+- `--dry-run` is the one preview flag: any verb that changes data or spends money accepts it, prints what it would do and what it would cost, writes nothing and calls no model. Without it the verb runs live. A verb that spends refuses to start without a spend cap in config and a priced model. (owner, 2026-10-09)
 - Every verb prints a short board (counts, paths, hashes, a `next` hint), never content, payloads or images. `--json` prints the same board as one JSON object.
 - Unscoped queries return a summary plus narrowing guidance (relevance over offset; no pagination, no full dumps).
 - Per-verdict operations stay singular when each explanation is evidence; batch only naturally plural curation (one call, an operations array, a status per operation).

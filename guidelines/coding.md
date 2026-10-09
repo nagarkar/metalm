@@ -25,7 +25,7 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 (owner, 2026-10-08) Every rule in this section is the owner's. The owner cannot remember code words: a name must explain itself to someone who has never seen the code.
 - Spell every word out in variables, functions, classes, files, config keys, CLI verbs, flags, board keys and test names. No abbreviations or initialisms (`cfg`, `ws`, `pct`) beyond `id`, `url`, `db`, `usd`. A stage number or internal code word (`pass3`, `D7`) is never a name: name what it does (`needs_ai_cleanup`).
 - A name says what it holds or does, with its unit (`timeout_seconds`, `estimate_usd`). A list or count says what is in it (`videos_never_fetched`, not `queued`); one word never means two things. A long clear name beats a short cryptic one; single letters only as a loop index.
-- CLI flags are long words (`--corpus`); a short alias only beside the spelled-out flag. What the author reads (help, boards, messages) uses the glossary's author-facing term, with the code word at most once in parentheses.
+- CLI verbs and flags are plain words that say what they do (`--corpus`, `--dry-run`); never a bare `--yes`, `--force`, `--all` or `run`, nor a verb that needs its help to decode (`polish`: say `ai-cleanup`). A short alias only beside the spelled-out flag. What the author reads (help, boards, messages) uses the glossary's author-facing term, with the code word at most once in parentheses.
 - Rename a confusing name when you meet it, in its own change.
 
 ### Data objects

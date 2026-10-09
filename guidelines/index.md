@@ -7,6 +7,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 
 | When you are about to… | Read `~/.claude/metalm/guidelines/` |
 |---|---|
+| name anything: a variable, file, verb, flag, board key, term or test | `coding.md#names` |
 | write a CUJ or its test, file a work item, or record an owner ruling | `requirements.md` |
 | record a design decision, write a package docstring, generated docs, or a diagram | `design.md` |
 | design or review structure: principles, patterns, concurrency, state machines, database choice and schema | `architecture.md` |

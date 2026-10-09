@@ -181,8 +181,7 @@ Rules:
 
 ## Surfaces
 - One typed API module holds behavior. CLI, MCP, pages and skill are thin surfaces with a parity test (every API verb reachable on each surface it claims; adding a verb updates the test's expected list).
-- **CLI: always, first.** Zero standing context; agents call it via Bash. Every verb has a description and an example; a `help` verb lists them; verbs that can call a model say so in their help.
-- Verbs print a short board (counts, paths, hashes, next verb), never content, payloads or images. `--json` for machines, accepted anywhere on the line. Unscoped queries return a summary plus narrowing guidance (relevance over offset; no pagination, no full dumps). Per-verdict operations stay singular when each explanation is evidence; batch only naturally plural curation (one call, operations array, per-op status).
+- **CLI: always, first.** Zero standing context; agents call it via Bash. Shape, help, completion, boards, exit codes and tests: `cli.md`. Verbs that can call a model say so in their help.
 - **Skill: always**, at `.claude/skills/<repo>/SKILL.md`, symlinked into `~/.claude/skills/`. It teaches CLI use: which verb for which ask, what never to read into the window, when to spawn a subagent, how to report. Only its description sits in context. Consumer skills point at their adapter, never at raw producer verbs.
 - **MCP: only if** (a) a shell-less client needs it (Claude Desktop chat, claude.ai, mobile), or (b) a long-lived connection, server-side auth or structured streaming is required, or (c) frequent cross-repo use where CLI-on-PATH is worse. Then: a curated small toolset (or one `run_cli` tool: argv → exit code/stdout/stderr, size-capped), terse descriptions (docstrings are the descriptions), errors as `{ok:false,error}`, parity-tested, registered project-scoped in `.mcp.json`. Large (20+) tool surfaces are ruled out.
 - Interactive, OAuth or browser-opening verbs are CLI-only, never MCP tools.

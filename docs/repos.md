@@ -7,7 +7,7 @@ Status: `compliant` (all checks pass), `adopted` (opted in, with exceptions list
 | repo | GitHub | status | checked against metalm commit | date | repo PR | open failures or exceptions |
 |---|---|---|---|---|---|---|
 | authorllm | nagarkar/authorllm | adopted | unrecorded | unrecorded | | `docs/design/exceptions.md` |
-| beelm | nagarkar/beelm | unchecked | | | | |
+| beelm | nagarkar/beelm | attempted | 58a5033 | 2026-10-09 | | fails: stale test plan, corpus/review/cleanup lack CUJs, env switches and config validation, no served-app row/serve agent/doctor checks, schedule install not idempotent, docstring status lines; history holds personal paths |
 | corpuslm | nagarkar/corpuslm | compliant | unrecorded | 2026-10-04 | | none documented |
 | gamelm | nagarkar/gamelm | unchecked | | | | |
 | marketlm | nagarkar/marketlm | unchecked | | | | |

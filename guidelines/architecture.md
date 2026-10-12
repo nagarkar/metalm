@@ -18,7 +18,8 @@ Scope: what a good design looks like — principles, OOAD patterns, concurrency,
   - (b) the decision is logged as a routine (e.g. as a database hash update or a new entry); where possible, with confidence, model, prompt version and inputs, but these are not strictly necessary;
   - (c) it is marked as a model's decision, never misrepresented as a person's;
   - (d) a person can find it later and override it, and the override is recorded for later analysis and improvements.
-- A person must remain in the critical path and accept a model's decision before: a change to behavior or config that hasn't been requested; a destructive or irreversible action; anything outbound (sent, published, or spending past a cap); and any overwrite of knowledge a person declared or confirmed.
+- A person approves only before anything outbound (sent or published), anything that spends money, and anything irreversible (permanent deletion, trades). Everything else is automated, and its risky parts are shown at the top of the review instead of blocked. Add a gate only after an incident shows the need, and record the incident next to the gate. A model may override a decision a person made when it has a reason; the override is recorded and listed in the review beside the original. (owner)
+- Review the result, not the plan. Ask a person to judge what they can perceive (the edited video, the audio, the rendered page), never an intermediate representation (a cut list, a JSON plan, a config diff) they would have to execute in their head before giving feedback. (owner)
 - Output outside the declared vocabulary is dropped and counted, never coerced.
 - Extracted items carry a verbatim anchor matched against source; unmatched ones dropped and counted. Extraction is the index, source text the authority: citations may cite only loci that appeared upstream; import drops and counts the rest. The architecture survives a model change; no unlogged model call.
 
@@ -46,7 +47,7 @@ Scope: what a good design looks like — principles, OOAD patterns, concurrency,
 ### Safety and failure
 - Nothing outbound (send, upload, publish, spend, order) happens without an explicit command; print what will be sent and wait for `--yes`; never decide on the owner's behalf.
 - Degradation announces itself: fall back with a visible notice; partial failure skips the unit loudly and builds the rest.
-- Never eager: worst-case damage bounded by construction; when in doubt leave content in. Safety in layers: structural invariants, a manifest of applied AND rejected actions, an LLM tripwire; risky items default to REJECTED unless a human approves. When attribution is ambiguous, pause instead of acting (pausing is safe to get wrong; selling is not).
+- Never eager: worst-case damage bounded by construction; when in doubt leave content in. Safety in layers: structural invariants, a manifest of applied AND rejected actions, an LLM tripwire; risky items under the outbound, spend or irreversible gate default to REJECTED unless a human approves. When attribution is ambiguous, pause instead of acting (pausing is safe to get wrong; selling is not).
 - Every hard guard is paired with a proposal channel; "settled" means the expert decides again, not never again.
 - Earn complexity: simplest defensible start; no fallback for a condition that measurably does not occur; a fallback must cost nothing to keep alive.
 

@@ -114,8 +114,8 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Kill switch by absence: an absent section turns its step off; a billed path without its section declines and names the exact TOML and env var to add; a present-but-off section says why on the board.
 - Thresholds and provider choice live in config: tune numbers, swap providers by a config edit. Tunable constants start as named module-level constants; moving them to config is a noted follow-up. A value (port) lives in one place; others import it. A property of one entity is that entity's column/default, not global config.
 - A config edit stales exactly the units whose resolved behaviour changes. A config/prompt change applies forward only; built artifacts keep the prompt/model they were made with; "stale" means real work to do.
-- Never hand-edit state or write ad-hoc scripts that bypass validation/fingerprints (no one-off backfills, no hand-dumped fingerprints, no `ps`/`stat` polling loops). Use the verb (`approve --set`, `status --why`, `verify`); add the verb if missing.
-- A file a person curates is theirs: tools append/increment, never rewrite an entry a person touched. Exported notes carry a marker; unmarked files are never touched. Cross-run knowledge: small committed JSON/JSONL.
+- Never bypass validation or fingerprints (no one-off backfills, no hand-dumped fingerprints, no `ps`/`stat` polling loops). Editing a state file directly is allowed when every read validates it against its schema and `verify` runs after; otherwise use the verb (`approve --set`, `status --why`, `verify`), and add the verb if missing. (owner)
+- A file a person curates is theirs: tools append/increment and never silently rewrite an entry a person touched; an agent override with a reason is recorded on the entry and listed in the review (see architecture.md, approvals). Exported notes carry a marker; unmarked files are never touched. Cross-run knowledge: small committed JSON/JSONL.
 
 ### Where `.env` lives
 (owner) Every rule in this section is the owner's.

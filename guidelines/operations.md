@@ -49,6 +49,8 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 - Change anything there; stop it when done. Its state is lost on next start.
 
 ## Boundaries
+- For simple apps, avoid large frameworks that require upgrades like FastAPI, Flask, Streamlit (for python)  React or a Node build. Use tailscale and avoid auth inside the app (login pages, sessions, or tokens in the app code), 
+- Avoid public tunnels for security reasons. Avoid relying on mac firewall rules for securing traffic.
 - Stop the real server only by asking the owner to unload its agent (`launchctl bootout gui/501/com.nagarkar.<app>.serve`). A process killed by hand is restarted by launchd on the old code or leaves the port held.
 - No second server against an app's real data, ever. Two code versions on one database overwrite each other's caches, and the owner's server keeps showing the old code.
 - Keep an old surface (and its scheduled sync) running until the new one has carried a real session.

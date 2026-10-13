@@ -161,6 +161,9 @@ When two or more repos hold the same kind of data (ytlm and beelm: transcripts f
 - **Moving or renaming the file:** stop every writer first (unload each repo's launch agents, stop servers), back up, move, update every repo's pointer, run each repo's `doctor`. Moving the owner's database file is an owner-data operation: print the commands and wait for the word.
 - **Tests never touch the shared file.** Each suite builds its own temporary database from the owner's `SCHEMA`; the `conftest.py` scrub removes `<REPO>_DB`.
 
+### Contracts between repos
+(owner) A contract between repos limits what code calls, never what may be requested. When a repo needs something another repo does not offer, file an issue there and say which contract term it would change. (Ruled 2026-10-13.)
+
 ### Database safety
 - Agents will not run, without first printing the exact SQL and getting the owner's confirmation in chat: `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, `ALTER TABLE … DROP COLUMN`, or `DELETE`/`UPDATE` without a targeted `WHERE`. This covers resetting test fixtures and dropping obsolete columns too.
 - Analytical questions and query experiments use read-only access (`sqlite3 -readonly`, a read-only Postgres role), never the app's write credentials.

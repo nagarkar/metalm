@@ -54,7 +54,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 
 - Ask one question at a time, with your recommendation. Ask only for blocking or product-judgment calls.
 - A multi-step instruction is one instruction: carry it end to end. Offer follow-ups; do not run them unasked.
-- Never approve a gate, answer a review item, tag a release, or send anything to a vendor on the owner's behalf. Never present an automated pick as the owner's. Whenever you ask the owner to review proposed changes (a Doc's tabs, a review page, a PR), put the web app link inline in that message. (owner, 2026-10-13)
+- Never approve a gate, answer a review item, tag a release, or send anything to a vendor on the owner's behalf. Never present an automated pick as the owner's. (owner)
 - Ask before any spend on a paid service, stating the cost. Nothing public without approval in chat. Show dry-run output before `--yes`. Never run an irreversible "accept all" (e.g. `resolve --all`) unless asked, and then only for what was named.
 - When a rule blocks you, say so; do not work around it. Flag contradictions with an `(owner)` rule; never override silently.
 - Leave system settings to the owner.
@@ -70,7 +70,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 - Every setting, flag, pin or config value named comes with its location: file path (line for code), or "proposed, does not exist yet" + the file it would live in; also its default, and whether the file is global or per-unit. (owner)
 - Terse. Lead with the action; report outcomes, not effort. Plain words, not pipeline jargon. No pasted JSON or old/new text in chat. Summaries 3–5 bullets; no long walkthroughs unless asked. Report in prose per unit (staged, written, left out, skipped). After tool output, state the next action it implies; do not stop at status.
 - Mark owner rulings `(owner)` where they are written down; no date.
-- Every review ask carries a phone-ready page link.
+- **Links:** whenever you ask the owner to open, try, fill in, check or review anything in a web app, Doc, page or PR (a review, a setup step, "try it", "look at this"), put the full link in that same message, to the exact page and not only the app's root, and say what to do there. Check it is live first (`operations.md#handing-out-links`). Never write "the page", "the app" or "Settings" without its link. A phone review page is phone-ready. (owner)
 - Surface warnings, conflicts and open questions unprompted.
 
 ## Memory

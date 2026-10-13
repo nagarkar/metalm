@@ -251,8 +251,8 @@ Rules:
 
 ## LLM calls
 - Deterministic first: anything measurable (string matching, quote checks, test runs, bookkeeping) is tested code. Ask the model only the question code cannot answer, never "here is the file, find problems". Scope attention by the diff but feed the whole changed files and full local context: culling bounds what may be concluded, never what may be read.
-- Priority: determinism/reliability → LLM only where clearly stronger → token efficiency → latency.
-- Use the model only where clearly stronger: cheap tier for mechanical work fully specified by the prompt, strong tier for judgement/synthesis; a gate experiment compares tiers before trusting the cheap one; moving tier is one config line. Editors/critics are never cheap tier. Cheap models select and route. The strongest (costly) model writes or gives holistic critique; a critic edits nothing; never `--force` it without a reason.
+- Priority: determinism/reliability → LLM only where clearly stronger → token efficiency → latency. Cheap models select and route; cheap tier only for mechanical work fully specified by the prompt. Editors and critics are never the cheap tier; the strongest model writes or gives holistic critique; a critic edits nothing; never `--force` it without a reason.
+- **Choosing a model** (owner): (1) name the metrics this use case cares about (accuracy, reasoning, speed, format validity, safety on adversarial input, …); (2) measure each candidate on every metric on a small sample of this use case's real inputs, never a leaderboard; (3) if every metric of two candidates is within 10% of the other's, pick the cheaper; (4) otherwise show the owner a table of metrics and cost per candidate and let them choose. Moving tier is one config line; keep the table and its date in the comment beside it.
 - Typed decisions (classify, rank, verify) prefer a calibrated typed-judgment model over prompt-and-parse; it judges, never writes; one narrow question per call. An uncalibrated stand-in may flag but never act. Prose stays on the LLM client.
 
 ### Typed decisions (Jev)
@@ -275,7 +275,7 @@ Tested reference: `examples/jev-decision/`.
 - Provenance per output: prompt id + sha256, model, profile row, payload sha256, provider/model that wrote and judged it, time, tokens, cost (from a dated vendor price table; unknown = `null`, never estimated). Missing provenance = not an artifact. Every call is a ledger row.
 - Cross-family judge: writer and judge from different providers (Claude never grades Claude); judge sees inputs shuffled and anonymised, first identifies the answer, then scores it against the spec; deterministic gates between them must pass; failed gate feeds its reason back, at most 3 attempts, then drop with reason. Auto-adopt a critic proposal only if it passes gates and scores at least as well.
 - No fallback chains: retry only 429/529 with bounded backoff; any other failure fails the step; low confidence stops and asks the owner. Never silently switch model or provider.
-- New external API: one-off probe first; confirm model ids and prices against the current catalogue (with source and date) before the first paid run. Judge model choices against explicit cost reference points; record the cost at expected volume.
+- New external API: one-off probe first; confirm model ids and prices against the current catalogue (with source and date) before the first paid run. Record the cost at expected volume.
 - Paid generation: free previews first, one parameter per round, exact regeneration by content id; critique prompts before render spend.
 - Media auditors send bounded samples (≤ max frames, ≤ width px, both in config) and log the exact request minus image bytes.
 - Never send secrets or excluded files (`.env`, keys) to a model; redaction applies to every payload.

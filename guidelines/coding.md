@@ -51,6 +51,7 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Never discard candidates: keep each with a status and reason; boards count each status. Strategy ladders stay strict where possible, loosen only as far as needed, record the rung, every rung's count and a one-sentence reason. Nothing built is thrown away for failing a test: set it aside, tagged, where the author can see it. Filter by the property that actually matters; filtered-out items stay available elsewhere.
 - Automated regeneration is bounded: existing presets only; new specs are proposals to ratify; at most two automatic rounds, then escalate; nothing bypasses a gate.
 - Verify the measuring instrument before blaming the model or the code (parsers and coverage counters lie too). Diagnose before prescribing: measure each stage before proposing a fix.
+- Check the assembled whole the way its consumer will, not only each part: parts that each pass can still join into a wrong whole. Encode the consumer's acceptance criteria (a platform's published specs, the whole file's lengths) as a check that runs before anything ships (podlm episode 9: every part passed while the joined sound ran twice as long, and Spotify declined a file whose parts carried different colour settings).
 
 ### Idempotence and writes
 - Steps are idempotent and content-addressed: output named or keyed by a fingerprint of every input that changes it (content, source, assets, fonts, overrides, relevant config, pinned tool/model versions). Unchanged fingerprint = reuse; rerun is a no-op.
@@ -58,6 +59,7 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Change detection by hash: an unchanged input is never re-read by the LLM; an unchanged verb call returns the existing artifact. Stamp values already in hand; do not recompute what a scheduled job computed (compute only when absent); decouple categorization from results so relabeling needs no rerun.
 - Deterministic tie-breaks (e.g. alphabetical) so reruns are byte-identical (a month later too). Normalizers are idempotent; round trips are byte-stable.
 - Per-unit caches so a failed unit reruns only itself.
+- A name is not a key: a cache entry named by a label (a tag, a slot, an id) goes stale silently when the label stays and its parameters change. Put every parameter that shapes the output into the name or the fingerprint (podlm episode 9, twice: review clips cached by tag were reused after their time window changed).
 - Atomic writes: temp file in the same directory + rename. An existing file is treated as built, so a torn file is a bug. Write after every completed unit so a crash costs one unit; only `ok` retires a unit, errors retry. An idempotency watermark advances in the same atomic unit as the work it guards; concurrent key writes to one JSON file must not clobber.
 - Writers that may clobber hand edits will not overwrite by default; require `--overwrite`.
 - Validate every artifact at write and at read against a schema; each property described (meaning, units, provenance); a semantic pass follows (sorted, bounds, uniqueness). Reject invalid state where it is produced.

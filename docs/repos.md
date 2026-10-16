@@ -11,6 +11,7 @@ Status: `compliant` (all checks pass), `adopted` (opted in, with exceptions list
 | corpuslm | nagarkar/corpuslm | compliant | unrecorded | 2026-10-04 | | none documented |
 | gamelm | nagarkar/gamelm | unchecked | | | | |
 | mailerlm | nagarkar/mailerlm | attempted | 58a5033cda569496ae50b0c3a3f3c59ae77b7d09 | 2026-10-10 | [nagarkar/mailerlm#4](https://github.com/nagarkar/mailerlm/pull/4) | setup PR open: pre-commit hook file awaits owner approval; no CUJ tests yet (nagarkar/mailerlm#2) |
+| supplylm | nagarkar/supplylm | adopted | f434bf50988e20e361624820740cc8f723f98b7e | 2026-10-16 | [nagarkar/supplylm#44](https://github.com/nagarkar/supplylm/pull/44) (merged) | structure checks pass; content checklists open in nagarkar/supplylm#37–#42; exception in CLAUDE.md: Alembic migrations |
 | marketlm | nagarkar/marketlm | unchecked | | | | |
 | tradelm | nagarkar/tradelm | unchecked | | | | |
 | ytlm | nagarkar/ytlm | adopted | unrecorded | 2026-10-03 | | three grandfathered, listed in `docs/design/README.md`; items awaiting the owner in nagarkar/ytlm#58 |

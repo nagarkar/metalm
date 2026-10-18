@@ -21,7 +21,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 | move code between repos, or decide where a test belongs | `testing.md#where-tests-live` |
 | touch a served page, server, launch agent, Tailscale | `operations.md` |
 | check, diagnose or screenshot a served page (including "the owner cannot see it") | `operations.md#browser-checks` and `operations.md#served-apps` |
-| design or change a page's layout or navigation, or hand over a UI feature | `ui.md` |
+| design or change a page's layout or navigation, hand over a UI feature, or give an app its icon or favicon | `ui.md` |
 | create or change a scheduled job (launchd, local scheduled task, cloud routine) or unattended work | `scheduling.md`: go down the checklist for its type |
 | write an install script | `install-scripts.md` |
 

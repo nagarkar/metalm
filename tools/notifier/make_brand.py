@@ -32,6 +32,7 @@ APPS = {
     "corpuslm": ("CorpusLM", "C", "f0508c", "c42a4a"),
     "mailerlm": ("MailerLM", "M", "12bfe6", "1e6fe0"),
     "supplylm": ("SupplyLM", "S", "4a5670", "1c2233"),
+    "publishinglm": ("PublishingLM", "P", "7c3aed", "4c1d95"),
 }
 
 

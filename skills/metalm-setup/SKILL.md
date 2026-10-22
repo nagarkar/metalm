@@ -29,6 +29,7 @@ docs/agents/issue-tracker.md  templates/issue-tracker.md (read by /review, /tria
 docs/agents/triage-labels.md  templates/triage-labels.md
 .claude/skills/<repo>/SKILL.md teaches agents the repo CLI, ends with `## Merging` (templates/skill-merging.md)
 .vscode/extensions.json       recommends bierner.markdown-mermaid
+<served assets>/brand/        the app's icons and wordmarks from metalm brand/<repo>/ (guidelines/ui.md#brand), when it serves a page
 ```
 
 Not allowed: `CONTEXT.md`, `docs/adr/`, `docs/requirements/`, `backlog.md`, `.scratch/`, numbered decision logs, `docs/agents/domain.md`, a hand-kept area list.
@@ -67,6 +68,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - `CLAUDE.md` is rewritten from `templates/CLAUDE.md`. Sort every existing line (from `CLAUDE.md` and `AGENTS.md`): a metalm rule → delete; a command → Commands; a departure from metalm → one line under Exceptions, pointing to its `(owner)` rule; anything else about the repo → its package docstring or the repo skill. Then `ln -s CLAUDE.md AGENTS.md`.
 - Write the repo skill's `## Merging` section from `templates/skill-merging.md` (today's date) so a session that loads the repo skill but not metalm still knows the standing merge authorization and when to ask the owner to revisit it. Ask the owner first whether to grant it; if the repo is shared, leave the section as `merge only on the owner's word`.
 - Write `docs/agents/*` and `.vscode/extensions.json` from templates. Delete `docs/agents/domain.md`.
+- A repo that serves a page or app window gets its brand (guidelines/ui.md#brand): add its `APPS` row in metalm's `tools/notifier/make_brand.py` if missing, generate `brand/<repo>/` in metalm (its own metalm PR), copy it into the repo's served assets, link the favicons in every page head and show the icon or wordmark in the header.
 - Create the five triage labels on the GitHub repo before filing any issue (a `ready-for-human` issue fails without them): `for l in needs-triage needs-info ready-for-agent ready-for-human wontfix; do gh label create "$l" --force; done`.
 - Old path cited anywhere (code comments, docs, memory) → leave a one-line pointer stub at the old path.
 - Fill gaps with marked stubs, never invented content: a missing section gets `TODO(owner): …`.
@@ -95,6 +97,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - [ ] `docs/agents/issue-tracker.md` says GitHub; `.vscode/extensions.json` lists the Mermaid extension.
 - [ ] The GitHub repo has the five triage labels (`gh label list`: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`).
 - [ ] Repo skill exists at `.claude/skills/<repo>/SKILL.md` and ends with `## Merging` stating either the standing authorization with its revisit trigger or "merge only on the owner's word". A repo with a second contributor or user that still carries the authorization fails: ask the owner to update it.
+- [ ] A repo with a served page or app window has its family icon (guidelines/ui.md#brand): metalm has `brand/<repo>/`, and every page links its favicon.
 - [ ] Test suite runs green (command recorded in `CLAUDE.md`).
 
 ### 6b Content — every guideline

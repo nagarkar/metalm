@@ -6,10 +6,16 @@ so the favicon, the logos and the notification banner stay one picture.
     swift tools/notifier/make_icon.swift /tmp/icon.png
     python3 tools/notifier/make_brand.py /tmp/icon.png brand/
 
+Each app gets the same picture with its own letter and gradient (APPS), in brand/<app>/:
+
+    python3 tools/notifier/make_brand.py --app tradelm brand/tradelm/
+
 Needs Pillow and the macOS system font (SF Pro) for the wordmark.
 """
 
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -18,6 +24,16 @@ from PIL import Image, ImageDraw, ImageFont
 TILE = (100 / 1024, 924 / 1024)
 FONT = "/System/Library/Fonts/SFNS.ttf"
 INK = {"light": (24, 20, 38, 255), "dark": (255, 255, 255, 255)}
+# (owner) One row per app: wordmark, tile letter, gradient top-left -> bottom-right.
+# Hues stay apart from each other and from the green spark; a new app adds a row here.
+APPS = {
+    "tradelm": ("TradeLM", "T", "3f73fa", "5a3fd9"),
+    "authorlm": ("AuthorLM", "A", "f9b233", "eb5a2a"),
+    "corpuslm": ("CorpusLM", "C", "f0508c", "c42a4a"),
+    "mailerlm": ("MailerLM", "M", "12bfe6", "1e6fe0"),
+    "supplylm": ("SupplyLM", "S", "4a5670", "1c2233"),
+    "publishinglm": ("PublishingLM", "P", "7c3aed", "4c1d95"),
+}
 
 
 def tile(icon: Image.Image, size: int) -> Image.Image:
@@ -25,11 +41,10 @@ def tile(icon: Image.Image, size: int) -> Image.Image:
     return icon.crop((lo, lo, hi, hi)).resize((size, size), Image.LANCZOS)
 
 
-def wordmark(icon: Image.Image, ink: tuple, height: int = 256) -> Image.Image:
+def wordmark(icon: Image.Image, ink: tuple, text: str = "SuperLM", height: int = 256) -> Image.Image:
     font = ImageFont.truetype(FONT, round(height * 0.62))
     axes = {a["name"]: a for a in font.get_variation_axes()}
     font.set_variation_by_axes([900 if n == b"Weight" else a["default"] for n, a in axes.items()])
-    text = "SuperLM"
     left, top, right, bottom = font.getbbox(text)
     gap = round(height * 0.28)
     canvas = Image.new("RGBA", (height + gap + right - left, height), (0, 0, 0, 0))
@@ -40,7 +55,7 @@ def wordmark(icon: Image.Image, ink: tuple, height: int = 256) -> Image.Image:
     return canvas
 
 
-def main(icon_path: str, out_dir: str) -> None:
+def main(icon_path: str, out_dir: str, name: str = "SuperLM") -> None:
     icon = Image.open(icon_path).convert("RGBA")
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -54,8 +69,20 @@ def main(icon_path: str, out_dir: str) -> None:
     touch.convert("RGB").save(out / "apple-touch-icon.png")
     icon.resize((1024, 1024), Image.LANCZOS).save(out / "logo.png")
     for scheme, ink in INK.items():
-        wordmark(icon, ink).save(out / f"logo-wordmark-{scheme}.png")
+        wordmark(icon, ink, name).save(out / f"logo-wordmark-{scheme}.png")
+
+
+def app(key: str, out_dir: str) -> None:
+    name, letter, start, end = APPS[key]
+    with tempfile.TemporaryDirectory() as tmp:
+        icon = f"{tmp}/icon.png"
+        swift = Path(__file__).with_name("make_icon.swift")
+        subprocess.run(["swift", str(swift), icon, letter, start, end], check=True)
+        main(icon, out_dir, name)
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:3])
+    if sys.argv[1] == "--app":
+        app(*sys.argv[2:4])
+    else:
+        main(*sys.argv[1:3])

@@ -33,6 +33,7 @@ APPS = {
     "mailerlm": ("MailerLM", "M", "12bfe6", "1e6fe0"),
     "supplylm": ("SupplyLM", "S", "4a5670", "1c2233"),
     "publishinglm": ("PublishingLM", "P", "7c3aed", "4c1d95"),
+    "computerlm": ("ComputerLM", "K", "0f9d8a", "0b5f6b"),
 }
 
 

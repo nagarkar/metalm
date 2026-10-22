@@ -8,6 +8,7 @@ Status: `compliant` (all checks pass), `adopted` (opted in, with exceptions list
 |---|---|---|---|---|---|---|
 | authorllm | nagarkar/authorllm | adopted | unrecorded | unrecorded | | `docs/design/exceptions.md` |
 | beelm | nagarkar/beelm | unchecked | | | | |
+| computerlm | nagarkar/computerlm | compliant | 50cf31a94fb5ff626343f432ae94c2b299d07dce | 2026-10-21 | [nagarkar/computerlm#1](https://github.com/nagarkar/computerlm/pull/1) | setup PR open; brand row in this PR (on top of #42); no exceptions |
 | corpuslm | nagarkar/corpuslm | compliant | unrecorded | 2026-10-04 | | none documented |
 | gamelm | nagarkar/gamelm | unchecked | | | | |
 | mailerlm | nagarkar/mailerlm | attempted | 58a5033cda569496ae50b0c3a3f3c59ae77b7d09 | 2026-10-10 | [nagarkar/mailerlm#4](https://github.com/nagarkar/mailerlm/pull/4) | setup PR open: pre-commit hook file awaits owner approval; no CUJ tests yet (nagarkar/mailerlm#2) |

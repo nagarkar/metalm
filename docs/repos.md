@@ -8,6 +8,7 @@ Status: `compliant` (all checks pass), `adopted` (opted in, with exceptions list
 |---|---|---|---|---|---|---|
 | authorllm | nagarkar/authorllm | adopted | unrecorded | unrecorded | | `docs/design/exceptions.md` |
 | beelm | nagarkar/beelm | unchecked | | | | |
+| computerlm | nagarkar/computerlm | compliant | 50cf31a94fb5ff626343f432ae94c2b299d07dce | 2026-10-21 | [nagarkar/computerlm#1](https://github.com/nagarkar/computerlm/pull/1) | setup PR open; brand row in this PR (on top of #42); no exceptions |
 | corpuslm | nagarkar/corpuslm | compliant | unrecorded | 2026-10-04 | | none documented |
 | gamelm | nagarkar/gamelm | unchecked | | | | |
 | publishinglm | nagarkar/publishinglm | attempted | ab00579c7358a7cce9e69df9a87a6a2face5ba08 | 2026-10-21 | [nagarkar/publishinglm#2](https://github.com/nagarkar/publishinglm/pull/2) | setup PR open: pre-commit hook file awaits the owner's first approval; launch agent and tailscale serve await the owner; brand in nagarkar/metalm#43; phase-3 choices taken as defaults, sent to the owner |

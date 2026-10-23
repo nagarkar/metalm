@@ -55,7 +55,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 - Ask one question at a time, with your recommendation. Ask only for blocking or product-judgment calls.
 - A multi-step instruction is one instruction: carry it end to end. Offer follow-ups; do not run them unasked.
 - Never approve a gate, answer a review item, tag a release, or send anything to a vendor on the owner's behalf. Never present an automated pick as the owner's. (owner)
-- Run a billed verb's `--dry-run` first. Ask before a spend above $0.50 (billed verbs in one request count together), stating the cost; at or below, run it and report the cost. (owner, 2026-10-13) Nothing public without approval in chat. Show dry-run output before `--yes`. Never run an irreversible "accept all" (e.g. `resolve --all`) unless asked, and then only for what was named.
+- Run a billed verb's `--dry-run` first. Ask before a spend above $0.50 (billed verbs in one request count together), stating the cost; at or below, run it and report the cost. (owner) Nothing public without approval in chat. Show dry-run output before `--yes`. Never run an irreversible "accept all" (e.g. `resolve --all`) unless asked, and then only for what was named.
 - When a rule blocks you, say so; do not work around it. Flag contradictions with an `(owner)` rule; never override silently.
 - Leave system settings to the owner.
 

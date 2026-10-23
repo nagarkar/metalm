@@ -1,0 +1,28 @@
+# metalm standard hooks (guidelines/design.md#generated-docs, guidelines/coding.md), from
+# skills/metalm-setup/templates/pre-commit-config.yaml. metalm-gendocs runs from this checkout
+# (a local hook) because metalm is the repo that ships it. No import-contracts hook: one package.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: no-commit-to-branch   # branch for every change (guidelines/index.md)
+        args: [--branch, main]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: metalm-gendocs   # regenerates docs/generated/; stops the commit when it changed files
+        name: metalm-gendocs
+        entry: env PYTHONPATH=src python3 -m metalm_gendocs.cli
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: guideline-caps   # guidelines/design.md#writing-metalm-guidelines
+        name: guideline line caps
+        entry: tools/check-caps.sh
+        language: script
+        pass_filenames: false
+        files: ^guidelines/

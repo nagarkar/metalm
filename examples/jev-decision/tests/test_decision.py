@@ -6,8 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from apps import department_router, pager, route, spam_filter
-from jevkit import QuestionSet, decide
+from apps import department_router, pager, route, spam_filter  # noqa: E402 (after the sys.path line)
+from jevkit import QuestionSet, decide  # noqa: E402
 
 QUESTION_SET = QuestionSet.load(ROOT / "questions/ticket_triage_v1.json")
 

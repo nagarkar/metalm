@@ -77,3 +77,9 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 - Each repo has its own OAuth client and token in its gitignored `.env` / `.config/` (token file mode 600); never reuse another repo's client or token.
 - Minimal scopes (e.g. `gmail.modify`; Sheets `drive.file` so only self-created files are visible).
 - Separate credentials for test and production (paper/live). Live requires an exact confirmation-phrase env var, not a boolean; a mismatch raises, never falls back.
+
+## Repo secrets
+(owner) A secret a workflow needs (a fine-grained PAT such as llmlm's `CONSUMERS_TOKEN`) is the owner's to create and set; agents never see or handle its value.
+- The agent that introduces one asks for it in one message with the full recipe: the secret's name and the workflow that reads it; the token's kind and scope (which repos, which permissions, read-only unless the workflow writes, an expiry); the page to create it at (https://github.com/settings/personal-access-tokens); and the command to set it, `gh secret set NAME --repo owner/repo`, pasting the value at its prompt, never as an argument and never in chat.
+- The check is `gh secret list --repo owner/repo`: name and date, never the value. A value that reached chat or a log is rotated and set again the same way.
+- The repo's skill lists each secret with its scope, its workflow and the set command, so the next ask is a copy.

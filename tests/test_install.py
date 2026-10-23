@@ -63,6 +63,7 @@ def test_install_rerun_and_uninstall_restore_the_owner_file(home: Path) -> None:
 
 
 def test_dry_run_writes_nothing(home: Path) -> None:
+    """Source: install-scripts.md#rules: --dry-run writes nothing and prints what would change."""
     before = snapshot(home)
     result = install(home, "--dry-run")
     assert result.returncode == 0, result.stderr
@@ -72,6 +73,7 @@ def test_dry_run_writes_nothing(home: Path) -> None:
 
 
 def test_a_link_taken_by_something_else_stops_before_any_write(home: Path) -> None:
+    """Source: install-scripts.md#rules: an existing link pointing elsewhere stops the install and is reported."""
     (home / ".local/bin").mkdir(parents=True)
     (home / ".local/bin/superlm-notify").symlink_to("/usr/bin/true")
     before = snapshot(home)
@@ -82,5 +84,6 @@ def test_a_link_taken_by_something_else_stops_before_any_write(home: Path) -> No
 
 
 def test_unknown_option_exits_one(home: Path) -> None:
+    """Source: cli.md#output-and-errors: exit 1 on any error, with `error:`."""
     result = install(home, "--bogus")
     assert result.returncode == 1 and result.stderr.startswith("error: unknown option")

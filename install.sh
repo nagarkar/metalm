@@ -16,7 +16,7 @@ case "${1:-}" in
   --dry-run) MODE=dry ;;
   --uninstall) MODE=uninstall ;;
   "") ;;
-  *) echo "usage: $0 [--dry-run|--uninstall]" >&2; exit 2 ;;
+  *) echo "error: unknown option '$1'. Run: $0 [--dry-run|--uninstall]" >&2; exit 1 ;;
 esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -46,21 +46,35 @@ run() { if [ "$MODE" = dry ]; then echo "would: $*"; else "$@"; fi; }
 backup() {
   [ -f "$1" ] || return 0
   local bak; bak="$1.bak.$(date +%Y%m%d-%H%M%S)"
-  run cp -p "$1" "$bak"
-  echo "backup: $bak"
+  if [ "$MODE" = dry ]; then echo "would: back up $1 to $bak"; return; fi
+  cp -p "$1" "$bak"; echo "backup: $bak"
 }
 
-# symlink TARGET LINKPATH: create; leaves an existing file, dir or foreign link alone.
+# symlink TARGET LINKPATH: create. An existing file, dir or foreign link stops the install,
+# untouched, before anything else is written (install-scripts.md#rules).
 symlink() {
   local target="$1" path="$2"
-  if [ -L "$path" ]; then
-    [ "$(readlink "$path")" = "$target" ] && { echo "ok: $path"; return; }
-    echo "skipped: $path points to $(readlink "$path"); remove it and rerun" >&2
-  elif [ -e "$path" ]; then
-    echo "skipped: $path exists and is not a symlink; move it aside and rerun" >&2
-  else
-    run ln -s "$target" "$path"; echo "linked: $path -> $target"
-  fi
+  if [ -L "$path" ] && [ "$(readlink "$path")" = "$target" ]; then echo "ok: $path"; return; fi
+  if [ "$MODE" = dry ]; then echo "would: link $path -> $target"; else ln -s "$target" "$path"; echo "linked: $path -> $target"; fi
+}
+
+# Every link the install makes, as "TARGET<tab>LINKPATH" lines.
+links() {
+  printf '%s\t%s\n' "$ROOT" "$LINK"
+  for s in "$ROOT"/skills/*/; do printf '%s\t%s\n' "${s%/}" "$CLAUDE_DIR/skills/$(basename "$s")"; done
+  printf '%s\t%s\n' "$ROOT/bin/superlm-notify" "$NOTIFY_LINK"
+}
+
+# Stop before any write when a link path is taken by something else.
+check_links() {
+  local target path
+  while IFS=$'\t' read -r target path; do
+    if [ -L "$path" ] && [ "$(readlink "$path")" != "$target" ]; then
+      echo "error: $path points to $(readlink "$path"), not metalm. Remove it, then run: $ROOT/install.sh" >&2; exit 1
+    elif [ -e "$path" ] && [ ! -L "$path" ]; then
+      echo "error: $path exists and is not a symlink. Move it aside, then run: $ROOT/install.sh" >&2; exit 1
+    fi
+  done < <(links)
 }
 
 unlink_if_ours() {
@@ -98,7 +112,7 @@ write_block() {
     echo "ok: $GLOBAL_MD block current"; rm "$tmp"; return
   fi
   diff -u "$GLOBAL_MD" "$tmp" 2>/dev/null || true
-  if [ "$MODE" = dry ]; then rm "$tmp"; return; fi
+  if [ "$MODE" = dry ]; then rm "$tmp"; echo "would: back up and update $GLOBAL_MD"; return; fi
   backup "$GLOBAL_MD"
   mv "$tmp" "$GLOBAL_MD"; echo "updated: $GLOBAL_MD"
 }
@@ -142,6 +156,7 @@ if [ "$MODE" = uninstall ]; then
   exit 0
 fi
 
+check_links
 run mkdir -p "$CLAUDE_DIR/skills"
 symlink "$ROOT" "$LINK"
 for s in "$ROOT"/skills/*/; do

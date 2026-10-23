@@ -10,9 +10,9 @@
 # System Settings → Notifications → SuperLM). There is no fallback banner.
 set -uo pipefail
 HERE="$(cd "$(dirname "$(readlink "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")" && pwd -P)"
-APP="${SUPERLM_NOTIFIER_APP:-$HERE/../tools/notifier/build/SuperLM Notifier.app}"
+APP="$HERE/../tools/notifier/build/SuperLM Notifier.app"
 if [ ! -x "$APP/Contents/MacOS/superlm-notifier" ]; then
-  echo "superlm-notify: the SuperLM notifier is not built; run metalm's install.sh" >&2
+  echo "error: the SuperLM notifier is not built. Run: $HERE/../install.sh" >&2
   exit 1
 fi
 status="$(mktemp)"
@@ -24,5 +24,5 @@ waited=0
 while [ ! -s "$status" ] && [ "$waited" -lt 130 ]; do sleep 1; waited=$((waited + 1)); done
 result="$(cat "$status" 2>/dev/null)"
 [ "$result" = "ok" ] && exit 0
-echo "superlm-notify: ${result:-no answer from the notifier}" >&2
+echo "error: ${result:-no answer from the notifier}. Check System Settings → Notifications → SuperLM, then retry" >&2
 exit 1

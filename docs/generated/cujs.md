@@ -7,3 +7,7 @@ Each journey is proven by the test named beside it.
 ## `tests/test_cli.py`
 
 - A commit that changes a docstring regenerates docs/generated/, and a stale copy fails the dry run. (`tests/test_cli.py::test_docstring_change_regenerates_docs_and_stale_copy_fails`)
+
+## `tests/test_install.py`
+
+- The owner runs install.sh: the global CLAUDE.md gains the metalm block with a backup, a rerun changes nothing, and --uninstall restores it. (`tests/test_install.py::test_install_rerun_and_uninstall_restore_the_owner_file`)

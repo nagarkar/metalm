@@ -20,7 +20,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "examples/jev-decision/tests"]
 markers = ["cuj(journey): an end-to-end test that proves a critical user journey"]
 
 [tool.ruff]

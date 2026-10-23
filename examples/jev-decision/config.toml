@@ -1,0 +1,3 @@
+# Each purpose is a section naming its model (coding.md#typed-decisions-jev); no section = purpose off.
+[ticket_triage]
+model = "jev-latest"

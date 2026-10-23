@@ -10,4 +10,4 @@ Reference for `guidelines/coding.md#typed-decisions-jev`. Stdlib only.
 python3 -m unittest discover -s tests -v
 ```
 
-Live (billed, ~560 input tokens per ticket): `TYPESAFE_API_KEY=… python3 live_smoke.py`. Tested 2026-10-03 on `jev-1.13.0`.
+Live (billed, ~560 input tokens per ticket): `METALM_LIVE=1 TYPESAFE_API_KEY=… python3 live_smoke.py`; the model is set in `config.toml`.

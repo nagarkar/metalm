@@ -3,35 +3,35 @@
 from jevkit import Decision, QuestionSet, Uncalibrated
 
 
-def spam_filter(d: Decision, qs: QuestionSet) -> str:  # Noul
-    bar = qs.bar("is_spam", "archive")
-    if d.yes("is_spam", bar):
+def spam_filter(decision: Decision, question_set: QuestionSet) -> str:  # Noul
+    bar = question_set.bar("is_spam", "archive")
+    if decision.yes("is_spam", bar):
         return "archive"
-    if d.no("is_spam", bar):
+    if decision.no("is_spam", bar):
         return "keep"
     return "human"
 
 
-def department_router(d: Decision, qs: QuestionSet) -> str:  # Choice
-    match d.choice("department", qs.bar("department", "route")):
+def department_router(decision: Decision, question_set: QuestionSet) -> str:  # Choice
+    match decision.choice("department", question_set.bar("department", "route")):
         case "billing" | "technical" | "sales" as team:
             return f"queue:{team}"
         case _:
             return "human"
 
 
-def pager(d: Decision, qs: QuestionSet) -> bool:  # Score
-    b = qs.bar("urgency", "page_manager")
-    return d.at_least("urgency", b["level"], b["p"])
+def pager(decision: Decision, question_set: QuestionSet) -> bool:  # Score
+    bar = question_set.bar("urgency", "page_manager")
+    return decision.at_least("urgency", bar["level"], bar["p"])
 
 
-def route(d: Decision, qs: QuestionSet) -> list[str]:
+def route(decision: Decision, question_set: QuestionSet) -> list[str]:
     try:
-        if spam_filter(d, qs) == "archive":
+        if spam_filter(decision, question_set) == "archive":
             return ["archive"]
-        out = [department_router(d, qs)]
-        if pager(d, qs):
-            out.append("page_manager")
-        return out
+        actions = [department_router(decision, question_set)]
+        if pager(decision, question_set):
+            actions.append("page_manager")
+        return actions
     except Uncalibrated:
         return ["human"]

@@ -9,9 +9,11 @@ Engineering rules for the `*lm` repos, plus the skill that brings a repo into li
 | `guidelines/design.md` | How to document and ratify a design; diagrams (Mermaid) |
 | `guidelines/architecture.md` | What a good design looks like: principles, OOAD patterns, actors/HSMs, databases |
 | `guidelines/coding.md` | Code shape, config vs state, agentic practice, token economy, CLI/skill/MCP |
+| `guidelines/cli.md` | CLI verbs, help, completion, board, `setup` and `doctor` |
 | `guidelines/testing.md` | Testing for autonomous agents; per-language toolchain |
 | `guidelines/operations.md` | Served apps, launch agents, Tailscale, sandboxes |
 | `guidelines/scheduling.md` | Scheduled and unattended work: launchd jobs, local scheduled tasks, cloud routines |
+| `guidelines/ui.md` | Page layout and navigation, handing over UI, app icons (brand) |
 | `guidelines/install-scripts.md` | How install scripts behave |
 | `src/metalm_gendocs/`, `.pre-commit-hooks.yaml` | The `metalm-gendocs` pre-commit hook: generates `docs/generated/` from code |
 | `examples/` | Tested reference code cited by guidelines |

@@ -10,5 +10,5 @@ None yet.
 
 ## Agent-drafted
 
-- `metalm_gendocs`: A malformed entry under `Terms:` or a `cuj` marker without a string journey is an error naming the file and line; nothing is written. Enforced by: tests/test_gendocs.py::test_malformed_term_fails.
-- `metalm_gendocs`: A term defined in two packages is an error naming both, never a silent pick: one word, one meaning. Enforced by: tests/test_gendocs.py::test_term_defined_twice_fails.
+- `metalm_gendocs`: A malformed entry under `Terms:` or a `cuj` marker without a string journey is an error naming the file and line; nothing is written. Enforced by: tests/test_generate.py::test_malformed_term_fails.
+- `metalm_gendocs`: A term defined in two packages is an error naming both, never a silent pick: one word, one meaning. Enforced by: tests/test_generate.py::test_term_defined_twice_fails.

@@ -13,7 +13,7 @@ A test exists to fail when behaviour a user relies on breaks. A test that cannot
 - Passes-on-rerun without a code change = flaky-test finding, filed, not a pass. Prove zero flakes with two identical full runs after large changes; establish a trusted subset of a new repo by running the full suite 3x.
 - Every code change adds or updates a test (lessons and fixes included). A fix proposal carries its encoded test.
 - Test-run artifacts are never committed.
-- Record the suite size with a date (e.g. "1,085 checks, 2026-08-20") in the repo's test plan; a drop without a stated reason is a finding.
+- Record the suite size (e.g. "1,085 checks"; git keeps its history) in the repo's test plan; a drop without a stated reason is a finding.
 
 ## Anti-gaming
 

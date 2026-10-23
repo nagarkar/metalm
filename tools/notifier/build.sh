@@ -3,6 +3,9 @@
 # sources beside this script: draws the icon, makes the .icns, compiles, signs ad
 # hoc. install.sh runs it, and only when a source changed (build/.stamp holds a
 # hash of them). Needs the Xcode command line tools: swiftc, iconutil, sips, codesign.
+# The bundle ID in Info.plist stays `com.nagarkar.superlm.notifier`, the one place the
+# owner's name is in git: macOS keys the notification permission to it, so a new ID
+# would make the owner allow notifications again. (owner)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 OUT="$HERE/build"

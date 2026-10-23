@@ -15,20 +15,20 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 - The page the owner looks at is the app's one real server. A running server keeps the code it started with, so a change does not exist for the owner until that server is restarted onto it.
 - One local server process per app hosts all its pages (job UI, dashboard, approvals); no cloud hosting until missed runs prove a need. One server per unit of work where the app has units (e.g. gamelm: one SKU per server, named on the command line).
 - `doctor` checks Tailscale is connected and prints the URL. It should warm the cert: the first HTTPS hit takes ~12 s.
-- `doctor` checks the real server is not older than its code: it compares the server process's start time with the newest commit touching served code and fails with "server is older than HEAD: `launchctl kickstart -k gui/501/com.nagarkar.<app>.serve`". A merge that skipped the restart is caught by the next `doctor` run instead of by the owner. (owner)
+- `doctor` checks the real server is not older than its code: it compares the server process's start time with the newest commit touching served code and fails with "server is older than HEAD: `launchctl kickstart -k gui/$(id -u)/com.<owner>.<app>.serve`". A merge that skipped the restart is caught by the next `doctor` run instead of by the owner. (owner)
 - A new app takes the next free tailnet port and gets a row in the owner's table (`~/.claude/CLAUDE.md`), a launch agent, and a sandbox script before its first UI change.
 
 ## tailscale serve
 - `tailscale serve` changes exposure: run it only on the owner's word in chat.
 - One form only: `tailscale serve --bg --https=<port> http://127.0.0.1:<local>`. Always pass `--https` explicitly; a bare `--bg <port>` takes the 443 slot. Superseded forms: `--https=8443 8777` (no URL), bare `serve --bg <port>`.
 - Confirm with `tailscale serve status`.
-- Run Tailscale commands unsandboxed or ask the owner to run them in a terminal (the sandbox fails with "The Tailscale GUI failed to start"). CLI path on the iMac: `/usr/local/bin/tailscale`.
+- Run Tailscale commands unsandboxed or ask the owner to run them in a terminal (the sandbox fails with "The Tailscale GUI failed to start"). CLI path: `/usr/local/bin/tailscale`.
 
 ## Launch agents
 - The real server runs under a launch agent: starts at login, restarts if it dies, logs to `~/.<app>/logs/serve.log`.
-- The plist template lives in the repo under `scripts/` (`scripts/com.nagarkar.<app>.serve.plist`); the installed copy in `~/Library/LaunchAgents/` is machine-specific and not committed.
+- The plist template lives in the repo under `scripts/` (`scripts/com.<owner>.<app>.serve.plist`); the installed copy in `~/Library/LaunchAgents/` is machine-specific and not committed.
 - The owner installs launch agents. Claude Code will not add anything that starts at login; print the install command instead.
-- Restart only with `launchctl kickstart -k gui/501/com.nagarkar.<app>.serve`, allowed for that one command in the repo's `.claude/settings.local.json`.
+- Restart only with `launchctl kickstart -k gui/$(id -u)/com.<owner>.<app>.serve`, allowed for that one command in the repo's `.claude/settings.local.json`.
 - launchd wins over `nohup`. Never start a server detached with `nohup`, not even as a fallback when `/health` fails.
 - An app without a launch agent yet: ask the owner to install one before relying on restarts. Until then ask the owner to restart the server; do not start or stop it yourself.
 
@@ -51,7 +51,7 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 ## Boundaries
 - For simple apps, avoid large frameworks that require upgrades like FastAPI, Flask, Streamlit (for python)  React or a Node build. Use tailscale and avoid auth inside the app (login pages, sessions, or tokens in the app code), 
 - Avoid public tunnels for security reasons. Avoid relying on mac firewall rules for securing traffic.
-- Stop the real server only by asking the owner to unload its agent (`launchctl bootout gui/501/com.nagarkar.<app>.serve`). A process killed by hand is restarted by launchd on the old code or leaves the port held.
+- Stop the real server only by asking the owner to unload its agent (`launchctl bootout gui/$(id -u)/com.<owner>.<app>.serve`). A process killed by hand is restarted by launchd on the old code or leaves the port held.
 - No second server against an app's real data, ever. Two code versions on one database overwrite each other's caches, and the owner's server keeps showing the old code.
 - Keep an old surface (and its scheduled sync) running until the new one has carried a real session.
 

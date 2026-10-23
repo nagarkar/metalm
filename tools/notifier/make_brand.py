@@ -50,9 +50,7 @@ def wordmark(icon: Image.Image, ink: tuple, text: str = "SuperLM", height: int =
     gap = round(height * 0.28)
     canvas = Image.new("RGBA", (height + gap + right - left, height), (0, 0, 0, 0))
     canvas.alpha_composite(tile(icon, height))
-    ImageDraw.Draw(canvas).text(
-        (height + gap - left, (height - (bottom - top)) / 2 - top), text, font=font, fill=ink
-    )
+    ImageDraw.Draw(canvas).text((height + gap - left, (height - (bottom - top)) / 2 - top), text, font=font, fill=ink)
     return canvas
 
 

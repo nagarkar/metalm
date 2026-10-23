@@ -22,7 +22,7 @@ Scope: how code is shaped, laid out, surfaced, reviewed and run by agents in eve
 - Remove unused parameters; split a signature that encodes a now-false assumption.
 
 ### Names
-(owner, 2026-10-08) Every rule in this section is the owner's. The owner cannot remember code words: a name must explain itself to someone who has never seen the code.
+(owner) Every rule in this section is the owner's. The owner cannot remember code words: a name must explain itself to someone who has never seen the code.
 - Spell every word out in variables, functions, classes, files, config keys, CLI verbs, flags, board keys and test names. No abbreviations or initialisms (`cfg`, `ws`, `pct`) beyond `id`, `url`, `db`, `usd`. A stage number or internal code word (`pass3`, `D7`) is never a name: name what it does (`needs_ai_cleanup`).
 - A name says what it holds or does, with its unit (`timeout_seconds`, `estimate_usd`). A list or count says what is in it (`videos_never_fetched`, not `queued`); one word never means two things. A long clear name beats a short cryptic one; single letters only as a loop index.
 - CLI verbs and flags are plain words that say what they do (`--corpus`, `--dry-run`); never a bare `--yes`, `--force`, `--all` or `run`, nor a verb that needs its help to decode (`polish`: say `ai-cleanup`). A short alias only beside the spelled-out flag. What the author reads (help, boards, messages) uses the glossary's author-facing term, with the code word at most once in parentheses.
@@ -263,7 +263,7 @@ Tested reference: `examples/jev-decision/`.
 - One batched call per state; result is a frozen dataclass; retry only 429/529.
 - Full meaning in every question (ids are not sent); Choice has `none_of_these`; each Score level a concrete situation.
 - Gate every answer: Noul `p ≥ bar` / `p ≤ 1 − bar`; Choice and Score on `confidence`; "level ≥ k" as `P(level ≥ k) ≥ bar`, never the weighted `score`.
-- Bars per action cost, set on labeled data. Answers near a bar vary between runs (0.61, then 0.52, same ticket, 2026-10-03).
+- Bars per action cost, set on labeled data. Answers near a bar vary between runs (0.61, then 0.52, same ticket).
 - Not sure or `none_of_these` → a person, never an LLM. Log raw answers with a wording hash.
 - One house client (port + LiteLLM adapter): vendor = model-string prefix; keys per vendor in `.env`; scripted transport for offline tests. Never name a model in code; each purpose is a config section naming its model; section absent = purpose off; no key = `NotConfigured` on the board.
 - `MODEL_PROFILES` table: verified contracts listing accepted params per model, one row per model, no family globs; unknown model gets the plain request; requests shaped before sending. No general params passthrough.

@@ -14,6 +14,7 @@ from metalm_gendocs.cli import main
 
 
 def test_exit_codes_are_zero_or_one(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Source: cli.md#output-and-errors: exit 0 on success, 1 on any error; errors read `error: <what>. <fix>`."""
     assert main(["--root", str(repo), "--dry-run"]) == 1
     assert main(["--root", str(repo)]) == 1
     assert "add them and commit again" in capsys.readouterr().err
@@ -25,6 +26,7 @@ def test_exit_codes_are_zero_or_one(repo: Path, capsys: pytest.CaptureFixture[st
 
 
 def test_check_is_a_hidden_alias_of_dry_run(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Source: cli.md#output-and-errors: --dry-run is the one preview flag; --check kept hidden until nagarkar/metalm#54."""
     assert main(["--root", str(repo), "--check"]) == 1
     assert "stale: " in capsys.readouterr().out
     assert not (repo / "docs/generated").exists()
@@ -34,6 +36,7 @@ def test_check_is_a_hidden_alias_of_dry_run(repo: Path, capsys: pytest.CaptureFi
 
 
 def test_help_ends_with_an_example(capsys: pytest.CaptureFixture[str]) -> None:
+    """Source: cli.md#help-and-completion: every leaf ends its help with an example."""
     with pytest.raises(SystemExit) as exit_info:
         main(["--help"])
     assert exit_info.value.code == 0
@@ -41,12 +44,14 @@ def test_help_ends_with_an_example(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_usage_error_exits_nonzero(capsys: pytest.CaptureFixture[str]) -> None:
+    """Source: cli.md#tests-that-hold-the-surface: a usage error exits non-zero."""
     with pytest.raises(SystemExit) as exit_info:
         main(["--no-such-flag"])
     assert exit_info.value.code != 0
 
 
 def test_imports_nothing_from_the_target_repo(repo: Path) -> None:
+    """Source: design.md#generated-docs: the generator imports nothing from the repo it reads."""
     put(repo, "src/shop/web.py", '"""Web: importing me would fail."""\nraise SystemExit("imported")\n')
     out = subprocess.run([sys.executable, "-m", "metalm_gendocs.cli", "--root", str(repo)], check=False, capture_output=True, text=True)
     assert out.returncode == 1, out.stderr
@@ -54,6 +59,7 @@ def test_imports_nothing_from_the_target_repo(repo: Path) -> None:
 
 
 def test_uncovered_languages_are_listed_for_the_agent_to_raise(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Source: design.md#generated-docs: languages it does not read are listed under Not covered (owner)."""
     put(repo, "src/native/Bridge.swift", "// swift\n")
     put(repo, "src/native/main.go", "// go\n")
     index = generate(repo)["docs/generated/index.md"]

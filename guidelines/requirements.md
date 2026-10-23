@@ -47,11 +47,11 @@ Generated docs cannot disagree with the code. What can:
 
 ## Capturing owner input
 - Record the owner's brief verbatim (minus dictation slips) in the issue. Paraphrase destroys evidence. Flag every substantive guess.
-- A ruling becomes the rule's text in its one place (design.md#where-decisions-live), marked `(owner)`, no date; the same PR deletes every older answer. (owner)
+- An owner decision becomes the rule's text in its one place (design.md#where-decisions-live), marked `(owner)`, no date; the same PR deletes every older answer. (owner)
 - Grill one question at a time, each with a recommendation; then a YAGNI pass; then example rows before deciding any schema.
 - Never default silently on a choice with real consequences: ask one line, saying what each answer means.
 - A bare verdict without a reason: ask why once; if declined, record it as given. Never ask during bulk triage. Never re-ask what an `(owner)` rule settles.
-- A mid-work general instruction: apply it now, and in the same reply propose it as a standing rule (exact words, target file), approvable with one word. Qualifies: an explicit terminology or structure ruling at once; a wording preference at two independent instances. A ruling that contradicts an `(owner)` rule replaces it; never leave both.
+- A mid-work general instruction: apply it now, and in the same reply propose it as a standing rule (exact words, target file), approvable with one word. Qualifies: an explicit terminology or structure decision at once; a wording preference at two independent instances. A decision that contradicts an `(owner)` rule replaces it; never leave both.
 - Rejected options the owner wants kept out: an `(owner)` rule "<X> is out of bounds: <reason>" in the owning package docstring.
 - Open questions are `ready-for-human` issues listing the data that bears on them; current behavior stands until answered.
 - The owner makes every substantive judgment. Never silently mutate owner-authored content.

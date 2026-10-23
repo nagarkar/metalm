@@ -7,7 +7,7 @@ Scope: where design decisions live (in the code), how they are written, decided 
 - A reason that concerns one module goes in that module's docstring, next to the code it explains. (owner)
 - A decision that spans several parts of the code lives once, inline, as a rule in the docstring of the package that owns it. (owner)
 - One answer per question. An overruled decision is replaced in place, and every older answer is deleted from docs and code. No Changes lines, no dates, no superseded text: git keeps the history. (owner)
-- The owner's decisions end with `(owner)`. Text without it is agent-drafted and agents may change it. Only the owner adds or removes `(owner)`; an agent writes it only on a ruling the owner gave in chat, in the same PR that deletes the older answers. (owner)
+- The owner's decisions end with `(owner)`. Text without it is agent-drafted and agents may change it. Only the owner adds or removes `(owner)`; an agent writes it only on a decision the owner gave in chat, in the same PR that deletes the older answers. (owner)
 - An `(owner)` rule names the test that enforces it where one can: `Enforced by: tests/test_x.py::test_y`.
 - `docs/design/<area>.md` holds only decisions no code in the repo owns: what it assumes about other repos, outside services, and data at rest. Same rules: one place, inline, `(owner)`. Most repos have none. (owner)
 - A rule shared by repos lives in metalm, or in the docstring of the library that owns the shared thing (a shared database: its schema-owner library). An operational decision lives as a comment in the script or plist that carries it out. (owner)
@@ -90,7 +90,7 @@ stateDiagram-v2
 One migration issue per repo, area by area; repos under active change first.
 1. Each area's purpose and module map move into its package docstring; the map into an import contract where supported.
 2. Only rules already marked as the owner's ("Ruled …", ratified) become `(owner)`. Every other rule is enforced by code or a test, or deleted.
-3. Where a ruling was overruled, only the latest survives; the PR lists every conflict settled.
+3. Where a decision was overruled, only the latest survives; the PR lists every conflict settled.
 4. `docs/requirements/` is replaced by generated CUJs once the e2e tests carry `cuj` markers. A requirement with no test becomes a `ready-for-human` issue: build a test, or drop it.
 5. Each PR deletes what it replaces. The PR body lists every promoted `(owner)` rule and settled conflict: that is the owner's review.
 - Old D-numbers cited in code: replace with the package name in the same PR.

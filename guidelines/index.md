@@ -8,7 +8,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 | When you are about to… | Read `~/.claude/metalm/guidelines/` |
 |---|---|
 | name anything: a variable, file, verb, flag, board key, term or test | `coding.md#names` |
-| write a CUJ or its test, file a work item, or record an owner ruling | `requirements.md` |
+| write a CUJ or its test, file a work item, or record an owner decision | `requirements.md` |
 | record a design decision, write a package docstring, generated docs, or a diagram | `design.md` |
 | design or review structure: principles, patterns, concurrency, state machines, database choice and schema | `architecture.md` |
 | write SQL, a migration, or query a database | `coding.md#storage-and-migrations` |
@@ -69,7 +69,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 
 - Every setting, flag, pin or config value named comes with its location: file path (line for code), or "proposed, does not exist yet" + the file it would live in; also its default, and whether the file is global or per-unit. (owner)
 - Terse. Lead with the action; report outcomes, not effort. Plain words, not pipeline jargon. No pasted JSON or old/new text in chat. Summaries 3–5 bullets; no long walkthroughs unless asked. Report in prose per unit (staged, written, left out, skipped). After tool output, state the next action it implies; do not stop at status.
-- Mark owner rulings `(owner)` where they are written down; no date.
+- Mark owner decisions `(owner)` where they are written down; no date.
 - Every review ask carries a phone-ready page link.
 - Surface warnings, conflicts and open questions unprompted.
 

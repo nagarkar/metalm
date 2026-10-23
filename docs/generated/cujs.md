@@ -4,4 +4,6 @@
 
 Each journey is proven by the test named beside it.
 
-None yet: mark end-to-end tests with `@pytest.mark.cuj("...")`.
+## `tests/test_cli.py`
+
+- A commit that changes a docstring regenerates docs/generated/, and a stale copy fails the dry run. (`tests/test_cli.py::test_docstring_change_regenerates_docs_and_stale_copy_fails`)

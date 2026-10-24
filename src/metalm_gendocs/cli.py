@@ -2,8 +2,6 @@
 
 Exit codes: 0 nothing changed, 1 files changed (or stale with --dry-run) or the
 code could not be read; pre-commit fails the hook on any non-zero exit.
-`--check` is a hidden alias of `--dry-run` until every repo's staleness test
-says `--dry-run`.
 """
 
 from __future__ import annotations
@@ -23,7 +21,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--root", default=".", help="repo root (default: current directory)")
     parser.add_argument("--dry-run", action="store_true", help="write nothing; exit 1 when a generated file is stale")
-    parser.add_argument("--check", dest="dry_run", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("files", nargs="*", help=argparse.SUPPRESS)  # pre-commit may pass filenames; ignored
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()

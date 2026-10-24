@@ -6,3 +6,9 @@
   language: python
   pass_filenames: false
   files: \.(py|toml)$
+- id: no-env-files
+  name: no .env files in git
+  description: Fails when any staged path's name starts with .env (guidelines/coding.md#security-and-secrets). Rename a keys template to env.example; keep .env backups outside the checkout.
+  language: fail
+  entry: "a .env* file is staged; it never enters git (guidelines/coding.md#security-and-secrets). Unstage it: git restore --staged <path>"
+  files: (^|/)\.env

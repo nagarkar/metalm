@@ -22,7 +22,7 @@ Scope: how every `*lm` repo's CLI is declared, documented, completed, printed an
 - Trace verb names, exit codes and durations, never raw argv (positional arguments can hold text).
 
 ## Setup and doctor
-- `setup` records the workspace pointer in `.env` (only inside the tool's marked block, after a timestamped backup, with a diff; `--dry-run`; a second run says nothing changed). It creates nothing else.
+- `setup` records the workspace pointer in `.env` (only inside the tool's marked block, after a timestamped backup written outside the checkout to `~/.local/state/<tool>/env-backups/`, never beside `.env` (coding.md#security-and-secrets), with a diff; `--dry-run`; a second run says nothing changed). It creates nothing else.
 - `doctor` lists each check with its state, detail and fix, exits 1 when a required check fails, and every scheduled job runs it first.
 
 ## Tests that hold the surface

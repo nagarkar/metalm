@@ -6,3 +6,5 @@ tools/notifier/build/
 .venv/
 *.egg-info/
 __pycache__/
+# No .env* path ever enters git (guidelines/coding.md#security-and-secrets).
+.env*

@@ -26,3 +26,12 @@ repos:
         language: script
         pass_filenames: false
         files: ^guidelines/
+      - id: no-env-files   # same definition as .pre-commit-hooks.yaml; local because metalm ships it
+        name: no .env files in git
+        language: fail
+        entry: "a .env* file is staged; it never enters git (guidelines/coding.md#security-and-secrets). Unstage it: git restore --staged <path>"
+        files: (^|/)\.env
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks

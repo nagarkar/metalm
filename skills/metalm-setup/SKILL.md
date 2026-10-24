@@ -64,6 +64,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - `git switch -c metalm-setup`.
 - Move docs into code per guidelines/design.md#moving-a-repo-to-docs-in-code-owner: area docs → package docstrings; module maps → import contracts; owner decisions → `(owner)` rules (only those already the owner's); requirements → `cuj` markers on e2e tests, or a `ready-for-human` issue when no test exists. Each step deletes what it replaces; meaning moves, never vanishes silently.
 - `CONTEXT.md` and glossaries → `Terms:` in the owning package docstrings. `docs/adr/`, numbered logs, design docs → `(owner)` rules or code; D-number citations in code → the package name. Backlog files → GitHub issues.
+- Add `.env*` to `.gitignore` (coding.md#security-and-secrets).
 - Hooks and docs: write `.pre-commit-config.yaml` and `.github/workflows/docs.yml` from templates, add the staleness test, ask the owner to approve the hook file (first time only), then `pre-commit install` (a committed `core.hooksPath` hook moves into the config as a local hook; `git config --unset core.hooksPath`). Regenerate `docs/generated/`.
 - `CLAUDE.md` is rewritten from `templates/CLAUDE.md`. Sort every existing line (from `CLAUDE.md` and `AGENTS.md`): a metalm rule → delete; a command → Commands; a departure from metalm → one line under Exceptions, pointing to its `(owner)` rule; anything else about the repo → its package docstring or the repo skill. Then `ln -s CLAUDE.md AGENTS.md`.
 - Write the repo skill's `## Merging` section from `templates/skill-merging.md` (today's date) so a session that loads the repo skill but not metalm still knows the standing merge authorization and when to ask the owner to revisit it. Ask the owner first whether to grant it; if the repo is shared, leave the section as `merge only on the owner's word`.
@@ -89,6 +90,7 @@ Use `/grilling`: one question at a time, each with a recommendation. Settle only
 - [ ] Every area package has a docstring; import contracts exist where the ecosystem supports them and pass.
 - [ ] No question has two answers: every `(owner)` rule is unique (`docs/generated/decisions.md` has no two rules on one subject).
 - [ ] Every e2e test carries a `cuj` marker; every core path (money, deletion, persistence, access, user data) has a CUJ.
+- [ ] No `.env*` in git (coding.md#security-and-secrets): `.gitignore` has a `.env*` line and no `!.env` negation; `.pre-commit-config.yaml` has `no-env-files` and `gitleaks`; `git ls-files | grep -E '(^|/)\.env'` is empty and `git check-ignore -q .env.x.bak` passes. A tracked `.env.example` is renamed `env.example` (`git mv`) with every reference updated; any other tracked `.env*` is reported to the owner, never printed.
 - [ ] `.pre-commit-config.yaml` has `no-commit-to-branch` and `metalm-gendocs`; `pre-commit install` is done in this checkout; `.github/workflows/docs.yml` exists.
 - [ ] `docs/generated/` is current (the staleness test passes).
 - [ ] Every setting named in docs gives its location.

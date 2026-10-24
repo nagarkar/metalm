@@ -5,7 +5,7 @@ Scope: any script that installs, links, or configures a tool on the owner's mach
 - Idempotent. A second run with nothing changed changes nothing and says so.
 - Edit shared files only inside managed marker blocks: `<!-- <tool>:begin -->` … `<!-- <tool>:end -->` (use the file's comment syntax where Markdown comments do not apply). On rerun, replace the block whole. Touch nothing outside it.
 - Show the diff of every file it edits.
-- Before editing an existing file, write a timestamped backup beside it: `<file>.bak.<YYYYmmdd-HHMMSS>`.
+- Before editing an existing file, write a timestamped backup beside it: `<file>.bak.<YYYYmmdd-HHMMSS>`. A backup of a file inside a git checkout, and of any `.env`, goes outside the checkout instead (`~/.local/state/<tool>/backups/`); no `.env*` backup ever lands in a repo (coding.md#security-and-secrets).
 - Support `--dry-run` (print every action and diff, write nothing) and `--uninstall` (remove its blocks and links, leave everything else).
 - Resolve its own location at runtime (`"$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`). No hardcoded paths to the clone or the home directory.
 - User scope only. No `sudo`. Install inside the user's home or the repo, never globally.

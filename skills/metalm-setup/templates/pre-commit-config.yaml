@@ -16,6 +16,11 @@ repos:
     rev: <metalm main commit SHA>   # update with: pre-commit autoupdate --bleeding-edge --repo https://github.com/nagarkar/metalm
     hooks:
       - id: metalm-gendocs   # regenerates docs/generated/; stops the commit when it changed files
+      - id: no-env-files     # no .env* path ever enters git (guidelines/coding.md#security-and-secrets)
+  - repo: https://github.com/gitleaks/gitleaks   # secret scan of staged changes (built with Go on first install)
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
   - repo: local
     hooks:
       - id: import-contracts   # module map (guidelines/design.md#the-package-docstring)

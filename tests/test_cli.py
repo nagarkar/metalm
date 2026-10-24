@@ -25,16 +25,6 @@ def test_exit_codes_are_zero_or_one(repo: Path, capsys: pytest.CaptureFixture[st
     assert capsys.readouterr().err.startswith("error: ")
 
 
-def test_check_is_a_hidden_alias_of_dry_run(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Source: cli.md#output-and-errors: --dry-run is the one preview flag; --check kept hidden until nagarkar/metalm#54."""
-    assert main(["--root", str(repo), "--check"]) == 1
-    assert "stale: " in capsys.readouterr().out
-    assert not (repo / "docs/generated").exists()
-    with pytest.raises(SystemExit):
-        main(["--help"])
-    assert "--check" not in capsys.readouterr().out
-
-
 def test_help_ends_with_an_example(capsys: pytest.CaptureFixture[str]) -> None:
     """Source: cli.md#help-and-completion: every leaf ends its help with an example."""
     with pytest.raises(SystemExit) as exit_info:
@@ -82,3 +72,10 @@ def test_docstring_change_regenerates_docs_and_stale_copy_fails(repo: Path) -> N
     assert run().returncode == 1
     assert "now with a cart" in (repo / "docs/generated/index.md").read_text()
     assert run("--dry-run").returncode == 0
+
+
+def test_check_flag_is_gone() -> None:
+    """Source: cli.md#output-and-errors: --dry-run is the one preview flag; the --check alias ended with nagarkar/metalm#54."""
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--check"])
+    assert exit_info.value.code != 0

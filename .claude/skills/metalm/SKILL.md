@@ -9,7 +9,7 @@ A change here reaches every repo that imports `guidelines/index.md` on its next 
 
 ## Tools
 
-- `metalm-gendocs [--dry-run]`: regenerates `docs/generated/`; the pre-commit hook other repos pin. `--check` is a hidden alias of `--dry-run` until every repo's staleness test says `--dry-run`. Try it in another repo: `pre-commit try-repo <metalm checkout> metalm-gendocs --all-files` (sees committed files only).
+- `metalm-gendocs [--dry-run]`: regenerates `docs/generated/`; the pre-commit hook other repos pin. Try it in another repo: `pre-commit try-repo <metalm checkout> metalm-gendocs --all-files` (sees committed files only).
 - `./install.sh [--dry-run|--uninstall]`: links metalm and its skills into `~/.claude`, writes the managed block in `~/.claude/CLAUDE.md`, builds the notifier. Tested against a throwaway home in `tests/test_install.py`; by hand: `CLAUDE_CONFIG_DIR=$(mktemp -d) ./install.sh`.
 - `tools/check-caps.sh`: fails when a guideline is over its cap (the "Hard caps" line in `guidelines/design.md`). A pre-commit hook.
 - `superlm-notify --repo <repo> [--title T] --body <message>`: one macOS banner under the SuperLM name.

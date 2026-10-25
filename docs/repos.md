@@ -17,5 +17,6 @@ Status: `compliant` (all checks pass), `adopted` (opted in, with exceptions list
 | supplylm | nagarkar/supplylm | adopted | f434bf50988e20e361624820740cc8f723f98b7e | 2026-10-16 | [nagarkar/supplylm#44](https://github.com/nagarkar/supplylm/pull/44) (merged) | structure checks pass; content checklists open in nagarkar/supplylm#37–#42; exception in CLAUDE.md: Alembic migrations |
 | marketlm | nagarkar/marketlm | unchecked | | | | |
 | metalm | nagarkar/metalm | adopted | a09d46afdb3fa3b317e723c1965c0cfafdea9103 | 2026-10-23 | [nagarkar/metalm#52](https://github.com/nagarkar/metalm/pull/52) (merged), [nagarkar/metalm#56](https://github.com/nagarkar/metalm/pull/56) | all checks pass once #56 merges; exception: notifier bundle ID (`(owner)` rule in tools/notifier/build.sh) |
+| peoplelm | nagarkar/peoplelm | attempted | c6980f86d45928a2f547e58f8b16251162e18808 | 2026-10-25 | [nagarkar/peoplelm#1](https://github.com/nagarkar/peoplelm/pull/1) | new repo; structure checks pass; open: brand icon for the review page (ui.md#brand), per-guideline content check (6b) not run, hook file awaits owner approval |
 | tradelm | nagarkar/tradelm | unchecked | | | | |
 | ytlm | nagarkar/ytlm | adopted | unrecorded | 2026-10-03 | | three grandfathered, listed in `docs/design/README.md`; items awaiting the owner in nagarkar/ytlm#58 |

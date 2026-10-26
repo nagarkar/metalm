@@ -6,9 +6,16 @@ Rules that span modules, from each package's `Decisions:`. Owner rules end with 
 
 ## Owner
 
-None yet.
+- `metalm_ops`: Backups go to two places: a nightly local copy on the internal disk and an encrypted restic snapshot in Backblaze B2. (owner)
+- `metalm_ops`: Health: a backup or B2 snapshot is green under 26 h, amber 26-50 h, red over 50 h or missing; a served app is green when `/health` answers 200 within 3 s, else red; a launch agent is green loaded with last exit 0, amber loaded with a nonzero exit, red not loaded; git and generated-docs rows are amber at worst. Red sends one SuperLM banner from the nightly job. (owner)
+- `metalm_ops`: The B2 key id, application key and restic password live only in the login keychain (`metalm-b2-key-id`, `metalm-b2-app-key`, `metalm-restic-password`); the restic password has a second copy in the owner's password manager. (owner)
+- `metalm_ops`: The backup runs nightly at 03:30; local keeps the last 7 runs; B2 keeps 7 daily, 4 weekly and 12 monthly snapshots; `restic check` reads a 5% subset weekly. (owner)
+- `metalm_ops`: The dashboard is a served app like the others: its loopback and tailnet ports are one row in the served-apps table in the owner's global `~/.claude/CLAUDE.md`, and `port` in ops.toml repeats the loopback one; no port is written in git. (owner)
+- `metalm_ops`: Which databases, apps and agents exist is one central gitignored file in metalm (`ops.toml`), never a manifest in each repo, so no tracked file says what databases exist. (owner)
 
 ## Agent-drafted
 
 - `metalm_gendocs`: A malformed entry under `Terms:` or a `cuj` marker without a string journey is an error naming the file and line; nothing is written. Enforced by: tests/test_generate.py::test_malformed_term_fails.
 - `metalm_gendocs`: A term defined in two packages is an error naming both, never a silent pick: one word, one meaning. Enforced by: tests/test_generate.py::test_term_defined_twice_fails.
+- `metalm_ops`: A database on an unmounted volume is an error naming the volume, never a skip and never a created folder. Enforced by: tests/test_ops_backup.py::test_unmounted_volume_is_error.
+- `metalm_ops`: Every copy is taken with SQLite's online backup API and passes `PRAGMA integrity_check` before it counts; a copy that fails is deleted and the run is an error. Enforced by: tests/test_ops_backup.py::test_corrupt_copy_fails.

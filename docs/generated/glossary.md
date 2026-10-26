@@ -4,3 +4,5 @@
 
 - **area** (`metalm_gendocs`): a package (a directory with `__init__.py` or `index.ts`/`index.js`) under the source root, a module directly inside the top Python package, or a Node file directly under the source root.
 - **CUJ** (`metalm_gendocs`): a critical user journey, declared on the end-to-end test that proves it.
+- **level** (`metalm_ops`): green, amber or red: the state of one check on the dashboard.
+- **run** (`metalm_ops`): one nightly invocation of `metalm-ops backup run`, written as one row of `runs.jsonl` whatever its outcome.

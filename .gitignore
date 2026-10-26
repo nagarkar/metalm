@@ -8,3 +8,5 @@ tools/notifier/build/
 __pycache__/
 # No .env* path ever enters git (guidelines/coding.md#security-and-secrets).
 .env*
+# The ops list of databases, ports and agents on this Mac (metalm_ops; ops.example.toml shows the shape).
+ops.toml

@@ -1,0 +1,28 @@
+# Copy to ops.toml in the main metalm checkout (read through ~/.claude/metalm/ops.toml).
+# ops.toml is gitignored: it names this machine's databases, ports and agents.
+# How to find the databases to list: the metalm skill, section "Finding databases".
+
+label_prefix = "com.example"     # launch agents become <prefix>.metalm.backup and <prefix>.metalm.ops.serve
+port = 8700                      # the dashboard's loopback port; tailscale serve fronts it
+
+[backup]
+local_dir = "~/Backups/lm"       # internal disk; one folder per nightly run
+keep_local = 7                   # (owner) last 7 runs
+b2_bucket = "example-bucket"     # Backblaze B2 bucket; keys come from the keychain
+restic_path = "metalm"           # folder in the bucket holding the restic repository
+keep_daily = 7                   # (owner) B2 retention: 7 daily, 4 weekly, 12 monthly
+keep_weekly = 4
+keep_monthly = 12
+check_subset = "5%"              # (owner) weekly restic check reads this share of the data
+
+[[database]]
+repo = "examplelm"
+name = "store"
+path = "/Volumes/Example/examplelm/store.sqlite"
+
+[[repo]]
+name = "examplelm"
+path = "~/workspace/repos/examplelm"
+github = "owner/examplelm"
+ports = [8700]                   # loopback ports of its served apps that answer /health (served-apps table); omit if none
+agents = ["com.example.examplelm.serve"]

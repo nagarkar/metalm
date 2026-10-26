@@ -1,8 +1,9 @@
 """Fix prompts: the brief the dashboard copies for a red or amber row, to paste into a new Claude Code session.
 
 Each brief names the repo, says what the check saw, points at the metalm rule
-that governs the fix, and says what the session must leave to the owner. It
-never asks a session to merge, push to main, install a launch agent or switch
+that governs the fix, and says what the session must leave to the owner. Merging
+follows the repo's own rule (metalm guidelines/index.md, the repo skill's
+`## Merging`). It never asks a session to push to main, install a launch agent or switch
 a main checkout's branch.
 """
 
@@ -53,4 +54,4 @@ def fix_prompt(repo: str, check: str, detail: str) -> str:
         what = "Run the metalm-setup skill's conformance check on it and update its row in metalm's docs/repos.md through a PR."
     else:
         what = "Find why and propose the fix."
-    return f"In {target}: {seen} {what} Work in a worktree, never on the main checkout; open a PR and leave merging to me."
+    return f"In {target}: {seen} {what} Work in a worktree, never on the main checkout; open a PR and merge only as the repo's merge rule allows (metalm guidelines/index.md; the repo skill's `## Merging`); otherwise leave merging to me."

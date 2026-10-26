@@ -95,8 +95,19 @@ def agent(label: str) -> Check:
     return Check(f"agent {label}", GREEN, f"loaded, {running}")
 
 
+def checkout_row(repo: Repo) -> Check:
+    """Red when the repo's main checkout is not on `main` (coding.md, owner rule of 2026-10-25)."""
+    code, out = _run(["git", "branch", "--show-current"], repo.path)
+    branch = out.strip()
+    if code != 0:
+        return Check("main checkout on main", RED, "git failed")
+    if branch == "main":
+        return Check("main checkout on main", GREEN, "main")
+    return Check("main checkout on main", RED, f"on {branch or 'a detached HEAD'}: commit or push it, then git switch main")
+
+
 def git_rows(repo: Repo, now: datetime) -> list[Check]:
-    rows = []
+    rows = [checkout_row(repo)]
     code, out = _run(["git", "branch", "--format=%(refname:short)", "--no-merged", "main"], repo.path)
     if code == 0:
         branches = [b for b in out.split() if b]

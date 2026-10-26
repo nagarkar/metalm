@@ -63,7 +63,7 @@ def test_page_shows_cards_icon_and_escapes(live):
     page = body.decode()
     assert code == 200
     assert "<link rel=icon href=/favicon.ico>" in page and "href=/apple-touch-icon.png" in page and "src=/icon-192.png" in page
-    assert ">alm<" in page and "1 green · 1 red" in page
+    assert ">alm<" in page and "1 green · 1 red: app :8700 /health<" in page  # a closed card names what is not green
     assert "1 red: alm: app :8700 /health" in page
     assert "backup &lt;store&gt;" in page and "<store>" not in page
     assert "<details open>" in page  # a red card opens itself

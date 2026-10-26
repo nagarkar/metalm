@@ -74,6 +74,9 @@ def _row(title: str, c: dict) -> str:
 def _card(title: str, level: str, checks: list[dict]) -> str:
     counts = {lv: sum(c["level"] == lv for c in checks) for lv in DOT}
     line = " · ".join(f"{n} {lv}" for lv, n in counts.items() if n) or "nothing checked"
+    failing = [c["check"] for c in checks if c["level"] != "green"]
+    if failing:  # say which checks are not green, so the card explains its colour while closed
+        line += ": " + ", ".join(html.escape(f) for f in failing)
     rows = "".join(_row(title, c) for c in checks)
     open_attr = " open" if level == "red" else ""
     return (

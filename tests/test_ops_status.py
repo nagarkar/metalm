@@ -34,7 +34,7 @@ AGENT_BAD = '{\n\t"LastExitStatus" = -15;\n\t"Label" = "x";\n};'
     "reply, level, detail",
     [
         ((0, AGENT_OK), "green", "loaded, running (pid 123)"),
-        ((0, AGENT_BAD), "amber", "loaded, not running, last exit -15"),
+        ((0, AGENT_BAD), "amber", "loaded, not running; last run ended killed by SIGTERM (green needs exit 0)"),
         ((113, "Could not find"), "red", "not loaded"),
     ],
 )
@@ -101,12 +101,12 @@ def test_collect_all_green(tmp_path, monkeypatch):
     got = status.collect(cfg, now=NOW)
     checks = {c["check"]: (c["level"], c["detail"]) for c in got["repos"][0]["checks"]}
     assert checks == {
-        "backup store": ("green", "2 h ago"),
+        "backup store": ("green", "last copy 2 h ago (green under 26 h)"),
         "app :8700 /health": ("green", "port 8700: 200"),
         "agent com.example.alm.serve": ("green", "loaded, running (pid 123)"),
         "main checkout on main": ("green", "main"),
-        "unmerged branches": ("green", "0"),
-        "open PRs": ("green", "1 open, 0 over 7 days"),
+        "unmerged branches": ("green", "none"),
+        "open PRs": ("green", "1 open; 0 open more than 7 days"),
         "open issues": ("green", "2"),
         "generated docs": ("green", "current"),
         "metalm row": ("green", "compliant"),
@@ -138,7 +138,7 @@ def test_collect_amber_and_red(tmp_path, monkeypatch):
     jobs = {c["check"]: c["level"] for c in got["jobs"]}
     assert jobs["B2 snapshot"] == "red"
     assert got["level"] == "red"
-    assert "alm: app :8700 /health (port 8700: no answer in 3 s)" in status.reds(got)
+    assert "alm: app :8700 /health: port 8700: no answer in 3 s" in status.reds(got)
 
 
 def test_failed_local_run_is_red_with_reason(tmp_path, monkeypatch):
@@ -179,3 +179,36 @@ def test_gh_found_without_homebrew_on_path(monkeypatch):
     found = status.gh()
     assert found in status.GH_PLACES or found.endswith("/gh")
     assert found != "gh" or not any(Path(p).is_file() for p in status.GH_PLACES)
+
+
+def test_every_non_green_row_says_why(tmp_path, monkeypatch):
+    """Source: the owner on 2026-10-25: "The amber findings don't explain why it's amber."."""
+    repo_dir = tmp_path / "alm"
+    (repo_dir / "docs" / "generated").mkdir(parents=True)
+    cfg = make_cfg(tmp_path, repos=[{"name": "alm", "path": str(repo_dir), "github": "o/alm", "agents": ["com.example.alm.serve"]}])
+
+    def world(argv, cwd):
+        if argv[0] == "/bin/launchctl":
+            return 0, AGENT_BAD
+        return fake_world(prs_created="2026-10-01T00:00:00Z", branches="a\nb\n", gendocs=(1, "stale: docs/generated/index.md\n"))(argv, cwd)
+
+    monkeypatch.setattr(status, "RUNNER", world)
+    monkeypatch.setattr(status, "REPOS_MD", tmp_path / "repos.md")
+    (tmp_path / "repos.md").write_text("| alm | o/alm | unchecked |\n")
+    backup.run(cfg, now=NOW - timedelta(hours=30))
+    got = {c["check"]: c["detail"] for c in status.collect(cfg, now=NOW)["repos"][0]["checks"] if c["level"] != "green"}
+    assert got == {
+        "backup store": "last copy 30 h ago (amber 26-50 h, red over 50 h)",
+        "agent com.example.alm.serve": "loaded, not running; last run ended killed by SIGTERM (green needs exit 0)",
+        "unmerged branches": "2 local branches not merged into main",
+        "open PRs": "1 open; 1 open more than 7 days (amber while any PR is older than 7 days)",
+        "generated docs": "stale, regenerate with metalm-gendocs: docs/generated/index.md",
+        "metalm row": "docs/repos.md says unchecked; green needs compliant or adopted",
+    }
+
+
+def test_failed_command_says_what_it_said(tmp_path, monkeypatch):
+    monkeypatch.setattr(status, "RUNNER", lambda argv, cwd: (1, "\nfatal: not a git repository\n"))
+    from metalm_ops.config import Repo
+
+    assert status.checkout_row(Repo("alm", tmp_path)).detail == "git failed: fatal: not a git repository"

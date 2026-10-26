@@ -76,6 +76,29 @@ def age_level(age: timedelta | None) -> str:
     return GREEN if age < FRESH else AMBER
 
 
+def _first_line(out: str) -> str:
+    return next((line.strip() for line in out.splitlines() if line.strip()), "no output")[:160]
+
+
+def _signal(code: int) -> str:
+    """'-15' -> 'killed by SIGTERM'; launchd reports a signal death as a negative exit."""
+    import signal
+
+    try:
+        return f"killed by {signal.Signals(-code).name}" if code < 0 else f"exit {code}"
+    except ValueError:
+        return f"exit {code}"
+
+
+def _age_line(what: str, age: timedelta | None) -> str:
+    """'last copy 30 h ago (green under 26 h, red over 50 h)'."""
+    if age is None:
+        return f"no {what} yet (red until the first one)"
+    level = age_level(age)
+    rule = "green under 26 h" if level == GREEN else ("amber 26-50 h, red over 50 h" if level == AMBER else "red over 50 h")
+    return f"last {what} {_age_text(age)} ({rule})"
+
+
 def _age_text(age: timedelta | None) -> str:
     if age is None:
         return "never"
@@ -99,7 +122,7 @@ def agent(label: str) -> Check:
     last = int(status.group(1)) if status else 0
     running = f"running (pid {pid.group(1)})" if pid else "not running"
     if last != 0:
-        return Check(f"agent {label}", AMBER, f"loaded, {running}, last exit {last}")
+        return Check(f"agent {label}", AMBER, f"loaded, {running}; last run ended {_signal(last)} (green needs exit 0)")
     return Check(f"agent {label}", GREEN, f"loaded, {running}")
 
 
@@ -108,7 +131,7 @@ def checkout_row(repo: Repo) -> Check:
     code, out = _run(["git", "branch", "--show-current"], repo.path)
     branch = out.strip()
     if code != 0:
-        return Check("main checkout on main", RED, "git failed")
+        return Check("main checkout on main", RED, f"git failed: {_first_line(out)}")
     if branch == "main":
         return Check("main checkout on main", GREEN, "main")
     return Check("main checkout on main", RED, f"on {branch or 'a detached HEAD'}: commit or push it, then git switch main")
@@ -119,20 +142,26 @@ def git_rows(repo: Repo, now: datetime) -> list[Check]:
     code, out = _run(["git", "branch", "--format=%(refname:short)", "--no-merged", "main"], repo.path)
     if code == 0:
         branches = [b for b in out.split() if b]
-        rows.append(Check("unmerged branches", AMBER if branches else GREEN, f"{len(branches)}"))
+        rows.append(Check("unmerged branches", AMBER if branches else GREEN, f"{len(branches)} local branches not merged into main" if branches else "none"))
     else:
-        rows.append(Check("unmerged branches", AMBER, "git failed"))
+        rows.append(Check("unmerged branches", AMBER, f"git failed: {_first_line(out)}"))
     if not repo.github:
         return rows
     code, out = _run([gh(), "pr", "list", "--repo", repo.github, "--state", "open", "--json", "number,createdAt", "--limit", "200"])
     if code == 0:
         prs = json.loads(out or "[]")
         old = [p for p in prs if now - datetime.fromisoformat(p["createdAt"].replace("Z", "+00:00")) > OLD_PR]
-        rows.append(Check("open PRs", AMBER if old else GREEN, f"{len(prs)} open, {len(old)} over 7 days"))
+        rows.append(
+            Check(
+                "open PRs",
+                AMBER if old else GREEN,
+                f"{len(prs)} open; {len(old)} open more than 7 days" + (" (amber while any PR is older than 7 days)" if old else ""),
+            )
+        )
     else:
-        rows.append(Check("open PRs", AMBER, "gh failed"))
+        rows.append(Check("open PRs", AMBER, f"gh failed: {_first_line(out)}"))
     code, out = _run([gh(), "issue", "list", "--repo", repo.github, "--state", "open", "--json", "number", "--limit", "1000"])
-    rows.append(Check("open issues", GREEN, f"{len(json.loads(out or '[]'))}") if code == 0 else Check("open issues", AMBER, "gh failed"))
+    rows.append(Check("open issues", GREEN, f"{len(json.loads(out or '[]'))}") if code == 0 else Check("open issues", AMBER, f"gh failed: {_first_line(out)}"))
     return rows
 
 
@@ -144,7 +173,7 @@ def docs_row(repo: Repo) -> Check | None:
     if code == 0:
         return Check("generated docs", GREEN, "current")
     stale = [line.split(": ", 1)[1] for line in out.splitlines() if line.startswith("stale: ")]
-    return Check("generated docs", AMBER, f"stale: {', '.join(stale)}" if stale else "could not check")
+    return Check("generated docs", AMBER, f"stale, regenerate with metalm-gendocs: {', '.join(stale)}" if stale else f"could not check: {_first_line(out)}")
 
 
 def conformance(repos_md: str) -> dict[str, str]:
@@ -172,7 +201,7 @@ def collect(cfg: Config, *, now: datetime | None = None) -> dict:
     if local_runs and not local_runs[-1]["ok"]:
         failed = [f"{i['repo']}/{i['name']}: {i['detail']}" for i in local_runs[-1]["items"] if not i["ok"]]
         jobs.append(Check("last local run", RED, "; ".join(failed)))
-    jobs.append(Check("B2 snapshot", age_level(offsite_age), _age_text(offsite_age)))
+    jobs.append(Check("B2 snapshot", age_level(offsite_age), _age_line("snapshot", offsite_age)))
     if checks_run and not checks_run[-1]["ok"]:
         jobs.append(Check("restic check", RED, checks_run[-1].get("detail", "failed")))
 
@@ -184,7 +213,7 @@ def collect(cfg: Config, *, now: datetime | None = None) -> dict:
         for db in (d for d in cfg.databases if d.repo == name):
             when = copies.get((db.repo, db.name))
             age = now - when if when else None
-            rows.append(Check(f"backup {db.name}", age_level(age), _age_text(age)))
+            rows.append(Check(f"backup {db.name}", age_level(age), _age_line("copy", age)))
         repo = by_name.get(name)
         if repo:
             rows.extend(health(port) for port in repo.ports)
@@ -197,7 +226,8 @@ def collect(cfg: Config, *, now: datetime | None = None) -> dict:
             else:
                 rows.append(Check("checkout", AMBER, f"no folder at {repo.path}"))
             status = rows_md.get(name, "not listed")
-            rows.append(Check("metalm row", GREEN if status in {"compliant", "adopted"} else AMBER, status))
+            ok = status in {"compliant", "adopted"}
+            rows.append(Check("metalm row", GREEN if ok else AMBER, status if ok else f"docs/repos.md says {status}; green needs compliant or adopted"))
         repos.append({"name": name, "level": worst(rows), "checks": [asdict(c) for c in rows]})
     every = jobs + [Check(c["check"], c["level"], c["detail"]) for r in repos for c in r["checks"]]
     return {"generated": now.isoformat(), "level": worst(every), "jobs": [asdict(c) for c in jobs], "repos": repos}
@@ -208,10 +238,10 @@ def worst(checks: list[Check]) -> str:
 
 
 def reds(status: dict) -> list[str]:
-    """'<repo>: <check> (<detail>)' for every red check."""
-    out = [f"backups: {c['check']} ({c['detail']})" for c in status["jobs"] if c["level"] == RED]
+    """'<repo>: <check>: <detail>' for every red check."""
+    out = [f"backups: {c['check']}: {c['detail']}" for c in status["jobs"] if c["level"] == RED]
     for r in status["repos"]:
-        out += [f"{r['name']}: {c['check']} ({c['detail']})" for c in r["checks"] if c["level"] == RED]
+        out += [f"{r['name']}: {c['check']}: {c['detail']}" for c in r["checks"] if c["level"] == RED]
     return out
 
 

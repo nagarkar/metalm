@@ -36,10 +36,11 @@ Restore a database: stop its app's server (ask the owner to unload its agent), c
 
 `ops.toml` is filled by hand or by an agent asked to look. Check each repo in `docs/repos.md`, and list every live SQLite file as one `[[database]]` row:
 - The repo's `.env` keys ending in `_WORKSPACE`, `_DB` or `_DIR`: read only those keys, never print other values. A `_DB` key names the file; a `_WORKSPACE` key names a folder to search.
-- `~/.<repo>/` (e.g. `~/.<app>/<app>.sqlite`), and folders in the home folder named after the app.
+- The repo's own skill and `doctor` verb first: they name the workspace and its store.
+- `~/.<repo>/` and `~/.<cli>/`: the CLI's name can differ from the repo's (authorllm's CLI is `authorlm`, so `~/.authorlm/authorlm.db`), and folders in the home folder named after the app.
 - `<the external drive>/<repo>/` (the drive the `.env` pointers name).
 - `config.toml` keys that name a path.
-Search with `find <folder> -maxdepth 4 \( -name '*.sqlite' -o -name '*.db' -o -name '*.sqlite3' \)`. Skip `backups/` folders, files named for a migration (`*-before-*`, `*backup*`), 0-byte files and other apps' stores (Photos). A database several repos share is listed once, under its schema owner (the transcript store under corpuslm). Show the owner the rows before writing them.
+Search with `find <folder> -maxdepth 4 \( -name '*.sqlite' -o -name '*.db' -o -name '*.sqlite3' \)`. Skip `backups/` folders, files named for a migration (`*-before-*`, `*backup*`), 0-byte files and other apps' stores (Photos). A database several repos share is listed once, under its schema owner (the transcript store under corpuslm). State that is not a local SQLite file (an Artifact database on claude.ai, media folders, downloadable caches such as a WordNet `wn.db`) is outside `backup run`; name it to the owner instead of listing it. Show the owner the rows before writing them.
 
 ## Merging
 

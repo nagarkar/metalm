@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -27,6 +28,8 @@ STALE = timedelta(hours=50)
 HEALTH_TIMEOUT = 3.0
 OLD_PR = timedelta(days=7)
 REPOS_MD = Path(__file__).resolve().parents[2] / "docs" / "repos.md"
+
+GH_PLACES = ("/opt/homebrew/bin/gh", "/usr/local/bin/gh")  # launchd's PATH has neither
 
 RUNNER = None  # tests set a fake: (argv, cwd) -> (returncode, output)
 FETCH = None  # tests set a fake: url -> status code (0 when unreachable)
@@ -47,6 +50,11 @@ def _run(argv: list[str], cwd: Path | None = None) -> tuple[int, str]:
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 127, str(exc)
     return proc.returncode, proc.stdout + proc.stderr
+
+
+def gh() -> str:
+    """Full path to gh: launch agents run with a PATH that lacks Homebrew."""
+    return shutil.which("gh") or next((p for p in GH_PLACES if Path(p).is_file()), "gh")
 
 
 def _fetch(url: str) -> int:
@@ -116,14 +124,14 @@ def git_rows(repo: Repo, now: datetime) -> list[Check]:
         rows.append(Check("unmerged branches", AMBER, "git failed"))
     if not repo.github:
         return rows
-    code, out = _run(["gh", "pr", "list", "--repo", repo.github, "--state", "open", "--json", "number,createdAt", "--limit", "200"])
+    code, out = _run([gh(), "pr", "list", "--repo", repo.github, "--state", "open", "--json", "number,createdAt", "--limit", "200"])
     if code == 0:
         prs = json.loads(out or "[]")
         old = [p for p in prs if now - datetime.fromisoformat(p["createdAt"].replace("Z", "+00:00")) > OLD_PR]
         rows.append(Check("open PRs", AMBER if old else GREEN, f"{len(prs)} open, {len(old)} over 7 days"))
     else:
         rows.append(Check("open PRs", AMBER, "gh failed"))
-    code, out = _run(["gh", "issue", "list", "--repo", repo.github, "--state", "open", "--json", "number", "--limit", "1000"])
+    code, out = _run([gh(), "issue", "list", "--repo", repo.github, "--state", "open", "--json", "number", "--limit", "1000"])
     rows.append(Check("open issues", GREEN, f"{len(json.loads(out or '[]'))}") if code == 0 else Check("open issues", AMBER, "gh failed"))
     return rows
 

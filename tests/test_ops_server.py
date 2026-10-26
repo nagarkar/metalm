@@ -83,3 +83,52 @@ def test_status_saved_for_restart(live, tmp_path):
 
 def test_page_before_first_collection():
     assert "Collecting the first status" in server.render(None)
+
+
+def post(port, path, host="127.0.0.1"):
+    con = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    con.request("POST", path, headers={"Host": host, "Content-Length": "0"})
+    resp = con.getresponse()
+    return resp.status, resp.getheader("Location"), resp.read()
+
+
+def test_refresh_collects_now_and_returns_to_page(tmp_path):
+    """Source: the owner's request of 2026-10-25 for a forced refresh."""
+    calls = []
+    state = server.State(make_cfg(tmp_path), lambda cfg: calls.append(1) or {**STATUS, "generated": f"2026-10-26T12:0{len(calls)}:00+00:00"})
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(state))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    port = httpd.server_address[1]
+    try:
+        assert post(port, "/refresh")[:2] == (303, "/")
+        assert post(port, "/refresh", host="evil.example.com")[0] == 421
+        assert post(port, "/other")[0] == 404
+        assert len(calls) == 1 and state.status["generated"].endswith("12:01:00+00:00")
+        assert (state.cfg.state_dir / "status.json").exists()
+    finally:
+        httpd.shutdown()
+
+
+def test_failed_refresh_keeps_last_page(tmp_path):
+    state = server.State(make_cfg(tmp_path), lambda cfg: STATUS)
+    state.refresh()
+    state.collect = lambda cfg: (_ for _ in ()).throw(RuntimeError("gh down"))
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(state))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        assert post(httpd.server_address[1], "/refresh")[0] == 500
+        assert state.status == STATUS
+    finally:
+        httpd.shutdown()
+
+
+def test_page_has_refresh_button(live):
+    page = get(live[0], "/")[1].decode()
+    assert "<form method=post action=/refresh" in page and ">Refresh</button>" in page
+
+
+def test_copy_prompt_only_on_red_and_amber_rows(live):
+    """Source: the owner's request of 2026-10-25: a Copy fix prompt button on red and amber rows."""
+    page = get(live[0], "/")[1].decode()
+    assert page.count("Copy fix prompt</button>") == 1  # the red /health row; the green rows get none
+    assert 'data-prompt="In alm: The ops dashboard shows `app :8700 /health`' in page

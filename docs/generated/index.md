@@ -56,6 +56,12 @@ Strict loader for `ops.toml`, the one gitignored list of what metalm watches.
 
 Off-site backups: encrypt the newest local run with restic and send it to Backblaze B2.
 
+## `metalm_ops.prompts`
+
+`src/metalm_ops/prompts.py`
+
+Fix prompts: the brief the dashboard copies for a red or amber row, to paste into a new Claude Code session.
+
 ## `metalm_ops.schedule`
 
 `src/metalm_ops/schedule.py`

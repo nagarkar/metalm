@@ -2,7 +2,8 @@
 
 Answers only Host headers naming this machine (loopback or `*.ts.net`), else
 421 (operations.md#served-apps). Serves `/`, `/health`, `/status.json` and
-the SuperLM icons; it writes nothing but `status.json`.
+the SuperLM icons; `POST /refresh` collects at once (the Refresh button). Red
+and amber rows carry a "Copy fix prompt" button (prompts.py). It writes nothing but `status.json`.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from importlib import resources
 from typing import Callable
 
 from metalm_ops import status as status_mod
+from metalm_ops.prompts import fix_prompt
 from metalm_ops.config import Config
 
 REFRESH_SECONDS = 15 * 60
@@ -40,18 +42,39 @@ summary::-webkit-details-marker{display:none}.name{font-weight:600}.line{color:v
 .dot{width:12px;height:12px;border-radius:50%;flex:none}
 table{width:100%;border-collapse:collapse;font-size:13px}td{padding:5px 14px;border-top:1px solid var(--line);vertical-align:top}
 td:first-child{width:12px;padding-right:0}td.v{color:var(--mute)}
+button{font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:4px 10px;cursor:pointer}
+.refresh{margin-left:auto;font-size:15px;padding:8px 16px;background:#5a3fd9;color:#fff;border:none}.refresh[disabled]{opacity:.6}
+td.fix{padding-top:0;border-top:none}
 .banner{margin:0 16px 12px;padding:12px 14px;border-radius:12px;color:#fff;font-weight:600;max-width:640px}
 """
+SCRIPT = """<script>
+document.querySelectorAll('form[action="/refresh"]').forEach(f=>f.addEventListener('submit',()=>{const b=f.querySelector('button');b.disabled=true;b.textContent='Checking…'}));
+document.querySelectorAll('button.copy').forEach(b=>b.addEventListener('click',async()=>{
+  const done=()=>{b.textContent='Copied: paste into a new session'};
+  try{await navigator.clipboard.writeText(b.dataset.prompt);return done()}catch(e){}
+  const t=document.createElement('textarea');t.value=b.dataset.prompt;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.select();
+  const ok=document.execCommand&&document.execCommand('copy');t.remove();if(ok)return done();
+  b.textContent='Copy failed: select the text below';b.insertAdjacentHTML('afterend','<p style="user-select:all">'+b.dataset.prompt.replace(/</g,'&lt;')+'</p>')
+}));
+</script>"""
 
 
 def _dot(level: str) -> str:
     return f'<span class="dot" style="background:{DOT[level]}" title="{level}"></span>'
 
 
+def _row(title: str, c: dict) -> str:
+    row = f"<tr><td>{_dot(c['level'])}</td><td>{html.escape(c['check'])}</td><td class=v>{html.escape(c['detail'])}</td></tr>"
+    if c["level"] == "green":
+        return row
+    prompt = html.escape(fix_prompt(title, c["check"], c["detail"]), quote=True)
+    return row + f'<tr><td></td><td class=fix colspan=2><button type=button class=copy data-prompt="{prompt}">Copy fix prompt</button></td></tr>'
+
+
 def _card(title: str, level: str, checks: list[dict]) -> str:
     counts = {lv: sum(c["level"] == lv for c in checks) for lv in DOT}
     line = " · ".join(f"{n} {lv}" for lv, n in counts.items() if n) or "nothing checked"
-    rows = "".join(f"<tr><td>{_dot(c['level'])}</td><td>{html.escape(c['check'])}</td><td class=v>{html.escape(c['detail'])}</td></tr>" for c in checks)
+    rows = "".join(_row(title, c) for c in checks)
     open_attr = " open" if level == "red" else ""
     return (
         f"<details{open_attr}><summary>{_dot(level)}<span><span class=name>{html.escape(title)}</span><br>"
@@ -82,11 +105,14 @@ def render(status: dict | None) -> str:
     cards += [_card(r["name"], r["level"], r["checks"]) for r in status["repos"]]
     return (
         head
-        + f'<header><img src=/icon-192.png alt=""><div><h1>LM ops</h1><div class=sub>{_dot(status["level"])} checked {when}</div></div></header>'
+        + f'<header><img src=/icon-192.png alt=""><div><h1>LM ops</h1><div class=sub>{_dot(status["level"])} checked {when}</div></div>'
+        + "<form method=post action=/refresh style=margin-left:auto><button class=refresh>Refresh</button></form></header>"
         + banner
         + "<main>"
         + "".join(cards)
-        + "</main></body></html>"
+        + "</main>"
+        + SCRIPT
+        + "</body></html>"
     )
 
 
@@ -101,6 +127,7 @@ class State:
     def __init__(self, cfg: Config, collect: Callable[[Config], dict]):
         self.cfg, self.collect = cfg, collect
         self.status: dict | None = None
+        self.lock = threading.Lock()
         saved = cfg.state_dir / "status.json"
         if saved.exists():
             try:
@@ -109,9 +136,11 @@ class State:
                 self.status = None
 
     def refresh(self) -> None:
-        result = self.collect(self.cfg)
-        status_mod.save(self.cfg, result)
-        self.status = result
+        """Collect now; a second caller waits for the run in progress instead of starting another."""
+        with self.lock:
+            result = self.collect(self.cfg)
+            status_mod.save(self.cfg, result)
+            self.status = result
 
 
 def make_handler(state: State) -> type[BaseHTTPRequestHandler]:
@@ -141,6 +170,20 @@ def make_handler(state: State) -> type[BaseHTTPRequestHandler]:
                 name, kind = ASSETS[path]
                 return self._send(200, resources.files("metalm_ops").joinpath("assets", name).read_bytes(), kind)
             return self._send(404, b"not found\n", "text/plain")
+
+        def do_POST(self) -> None:
+            if not host_allowed(self.headers.get("Host", "")):
+                return self._send(421, b"misdirected request\n", "text/plain")
+            if self.path.split("?", 1)[0] != "/refresh":
+                return self._send(404, b"not found\n", "text/plain")
+            try:
+                state.refresh()
+            except Exception as exc:  # the page keeps the last good status
+                return self._send(500, f"error: status collection failed: {exc}\n".encode(), "text/plain")
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
     return Handler
 

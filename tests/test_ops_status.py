@@ -7,6 +7,7 @@ in 3 s, agent loaded with exit 0, git and docs amber at worst).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -76,9 +77,9 @@ def fake_world(prs_created: str = "2026-10-25T00:00:00Z", branches: str = "", ge
             return 0, checkout + "\n"
         if argv[0] == "git":
             return 0, branches
-        if argv[:2] == ["gh", "pr"]:
+        if argv[0].endswith("gh") and argv[1] == "pr":
             return 0, json.dumps([{"number": 1, "createdAt": prs_created}])
-        if argv[:2] == ["gh", "issue"]:
+        if argv[0].endswith("gh") and argv[1] == "issue":
             return 0, json.dumps([{"number": 1}, {"number": 2}])
         if argv[0].endswith("metalm-gendocs"):
             return gendocs
@@ -170,3 +171,11 @@ def test_main_checkout_must_be_on_main(tmp_path, monkeypatch, branch, level, det
     from metalm_ops.config import Repo
 
     assert status.checkout_row(Repo("alm", tmp_path)) == status.Check("main checkout on main", level, detail)
+
+
+def test_gh_found_without_homebrew_on_path(monkeypatch):
+    """Incident 2026-10-25: under launchd every PR and issue row read "gh failed" because PATH lacked Homebrew."""
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    found = status.gh()
+    assert found in status.GH_PLACES or found.endswith("/gh")
+    assert found != "gh" or not any(Path(p).is_file() for p in status.GH_PLACES)

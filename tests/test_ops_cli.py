@@ -86,7 +86,7 @@ def test_status_alerts_once_on_red(tmp_path, capsys, monkeypatch):
     assert cli.main(["status", "--alert", "--json", "--config", str(cfg)]) == 0
     board = json.loads(capsys.readouterr().out)
     assert board["level"] == "red" and "next" in board
-    assert len(sent) == 1 and "backup store (never)" in sent[0][1]
+    assert len(sent) == 1 and "alm: backup store: no copy yet (red until the first one)" in sent[0][1]
 
 
 def test_status_without_alert_sends_nothing(tmp_path, capsys, monkeypatch):

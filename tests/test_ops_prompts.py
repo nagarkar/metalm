@@ -31,4 +31,6 @@ def test_prompt_names_repo_finding_and_boundary(repo, check, detail, starts, rul
     assert text.startswith(starts)
     assert f"`{check}`: {detail}." in text
     assert rule in text
-    assert text.endswith("Work in a worktree, never on the main checkout; open a PR and leave merging to me.")
+    assert text.endswith(
+        "Work in a worktree, never on the main checkout; open a PR and merge only as the repo's merge rule allows (metalm guidelines/index.md; the repo skill's `## Merging`); otherwise leave merging to me."
+    )

@@ -108,3 +108,8 @@ One migration issue per repo, area by area; repos under active change first.
 - Judge against the product's own drivers via scenarios; "unsound" = a scenario the product will meet that a quoted decision mishandles. No taste findings.
 - Priority: two `(owner)` rules that contradict; an overruled answer still written somewhere; a stated invariant ("always", "exactly one") broken elsewhere; a docs-recorded decision that concerns one module (belongs in the code); retry of a non-idempotent write without an idempotency key; secrets in the clear; unbounded queue or fan-out; a single point of failure on a depended-on path.
 - A missing rationale matters only where a reader could plausibly undo the decision and break something.
+
+## Prose for readers
+
+- Anything written for a reader (scripts, docs, artifacts, briefs, messages) avoids the patterns listed in Wikipedia's "Signs of AI writing" (https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing). Above all: negative parallelisms ("not X, but Y", "not one but two", "not just X but Y", "X is not the villain"); reflexive groups of three; puffery and promotional words; vague attributions ("experts say"); trailing "-ing" phrases that claim significance ("highlighting its importance"); stock AI vocabulary ("crucial", "pivotal", "delve", "showcasing", "tapestry"); heavy em dashes. State the claim directly. (owner)
+- Every skill that writes prose for a reader names this rule in its own text, so the rule travels with the skill. (owner)

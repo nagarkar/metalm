@@ -11,6 +11,7 @@ brand = ["Pillow>=10"]  # tools/notifier/make_brand.py
 
 [project.scripts]
 metalm-gendocs = "metalm_gendocs.cli:main"
+metalm-ops = "metalm_ops.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -18,6 +19,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+metalm_ops = ["assets/*", "templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "examples/jev-decision/tests"]

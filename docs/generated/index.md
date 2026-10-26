@@ -19,3 +19,57 @@ Command line for metalm-gendocs: the pre-commit hook entry and the staleness che
 `src/metalm_gendocs/generate.py`
 
 Extraction and rendering for docs/generated/: pure over the files it reads.
+
+## `metalm_ops`
+
+`src/metalm_ops/__init__.py`
+
+metalm_ops: backs up every *lm repo's databases and shows one health page for all of them.
+
+## `metalm_ops.backup`
+
+`src/metalm_ops/backup.py`
+
+Local backups: a verified SQLite copy of every listed database, one folder per run.
+
+## `metalm_ops.cli`
+
+`src/metalm_ops/cli.py`
+
+Command line for metalm-ops: backups, status, the dashboard server, doctor and launch agent plists.
+
+## `metalm_ops.config`
+
+`src/metalm_ops/config.py`
+
+Strict loader for `ops.toml`, the one gitignored list of what metalm watches.
+
+## `metalm_ops.doctor`
+
+`src/metalm_ops/doctor.py`
+
+`metalm-ops doctor`: every owner-run step no code installs, each with its fix command.
+
+## `metalm_ops.offsite`
+
+`src/metalm_ops/offsite.py`
+
+Off-site backups: encrypt the newest local run with restic and send it to Backblaze B2.
+
+## `metalm_ops.schedule`
+
+`src/metalm_ops/schedule.py`
+
+Launch agent plists for the nightly backup and the dashboard, rendered from package templates.
+
+## `metalm_ops.server`
+
+`src/metalm_ops/server.py`
+
+The ops dashboard: one page on loopback, one card per repo, refreshed in the background.
+
+## `metalm_ops.status`
+
+`src/metalm_ops/status.py`
+
+Status collector: one green/amber/red row per check, per repo, for the dashboard and `status`.

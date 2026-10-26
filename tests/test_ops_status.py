@@ -68,10 +68,12 @@ def test_conformance_parses_repos_md():
     assert status.conformance(md) == {"alm": "compliant", "blm": "attempted"}
 
 
-def fake_world(prs_created: str = "2026-10-25T00:00:00Z", branches: str = "", gendocs: tuple = (0, "")):
+def fake_world(prs_created: str = "2026-10-25T00:00:00Z", branches: str = "", gendocs: tuple = (0, ""), checkout: str = "main"):
     def run(argv, cwd):
         if argv[0] == "/bin/launchctl":
             return 0, AGENT_OK
+        if argv[:3] == ["git", "branch", "--show-current"]:
+            return 0, checkout + "\n"
         if argv[0] == "git":
             return 0, branches
         if argv[:2] == ["gh", "pr"]:
@@ -101,6 +103,7 @@ def test_collect_all_green(tmp_path, monkeypatch):
         "backup store": ("green", "2 h ago"),
         "app :8700 /health": ("green", "port 8700: 200"),
         "agent com.example.alm.serve": ("green", "loaded, running (pid 123)"),
+        "main checkout on main": ("green", "main"),
         "unmerged branches": ("green", "0"),
         "open PRs": ("green", "1 open, 0 over 7 days"),
         "open issues": ("green", "2"),
@@ -122,6 +125,7 @@ def test_collect_amber_and_red(tmp_path, monkeypatch):
     got = status.collect(cfg, now=NOW)  # never backed up, never sent off-site
     checks = {c["check"]: c["level"] for c in got["repos"][0]["checks"]}
     assert checks == {
+        "main checkout on main": "green",
         "backup store": "red",
         "app :8700 /health": "red",
         "unmerged branches": "amber",
@@ -150,3 +154,19 @@ def test_database_only_repo_gets_a_card(tmp_path, monkeypatch):
     monkeypatch.setattr(status, "RUNNER", fake_world())
     got = status.collect(cfg, now=NOW)
     assert [r["name"] for r in got["repos"]] == ["alm"]
+
+
+@pytest.mark.parametrize(
+    "branch, level, detail",
+    [
+        ("main", "green", "main"),
+        ("ai-writing-patterns", "red", "on ai-writing-patterns: commit or push it, then git switch main"),
+        ("", "red", "on a detached HEAD: commit or push it, then git switch main"),
+    ],
+)
+def test_main_checkout_must_be_on_main(tmp_path, monkeypatch, branch, level, detail):
+    """Source: coding.md owner rule of 2026-10-25 (a session left metalm's main checkout on its branch)."""
+    monkeypatch.setattr(status, "RUNNER", fake_world(checkout=branch))
+    from metalm_ops.config import Repo
+
+    assert status.checkout_row(Repo("alm", tmp_path)) == status.Check("main checkout on main", level, detail)

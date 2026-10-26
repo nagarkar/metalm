@@ -13,6 +13,7 @@ Decisions:
 - Which databases, apps and agents exist is one central gitignored file in metalm (`ops.toml`), never a manifest in each repo, so no tracked file says what databases exist. (owner)
 - Health: a backup or B2 snapshot is green under 26 h, amber 26-50 h, red over 50 h or missing; a served app is green when `/health` answers 200 within 3 s, else red; a launch agent is green loaded with last exit 0, amber loaded with a nonzero exit, red not loaded; git and generated-docs rows are amber at worst. Red sends one SuperLM banner from the nightly job. (owner)
 - The dashboard is a served app like the others: its loopback and tailnet ports are one row in the served-apps table in the owner's global `~/.claude/CLAUDE.md`, and `port` in ops.toml repeats the loopback one; no port is written in git. (owner)
+- A repo's main checkout off `main` (another branch or a detached HEAD) is red on the dashboard, because its launch agents and, for metalm, every session read that checkout. (owner)
 - Every copy is taken with SQLite's online backup API and passes `PRAGMA integrity_check` before it counts; a copy that fails is deleted and the run is an error. Enforced by: tests/test_ops_backup.py::test_corrupt_copy_fails.
 - A database on an unmounted volume is an error naming the volume, never a skip and never a created folder. Enforced by: tests/test_ops_backup.py::test_unmounted_volume_is_error.
 

@@ -6,6 +6,7 @@ Rules that span modules, from each package's `Decisions:`. Owner rules end with 
 
 ## Owner
 
+- `metalm_ops`: A repo's main checkout off `main` (another branch or a detached HEAD) is red on the dashboard, because its launch agents and, for metalm, every session read that checkout. (owner)
 - `metalm_ops`: Backups go to two places: a nightly local copy on the internal disk and an encrypted restic snapshot in Backblaze B2. (owner)
 - `metalm_ops`: Health: a backup or B2 snapshot is green under 26 h, amber 26-50 h, red over 50 h or missing; a served app is green when `/health` answers 200 within 3 s, else red; a launch agent is green loaded with last exit 0, amber loaded with a nonzero exit, red not loaded; git and generated-docs rows are amber at worst. Red sends one SuperLM banner from the nightly job. (owner)
 - `metalm_ops`: The B2 key id, application key and restic password live only in the login keychain (`metalm-b2-key-id`, `metalm-b2-app-key`, `metalm-restic-password`); the restic password has a second copy in the owner's password manager. (owner)

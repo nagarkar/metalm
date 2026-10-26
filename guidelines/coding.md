@@ -234,6 +234,7 @@ Rules:
 - Harness enforces step order; the coordinator never edits target files and never pushes. Implementers never run writing git commands; the harness commits.
 - Deterministic lint before spending a critic; a lint error means redraft now. Gates will not accept output that skipped the sanctioned road.
 - Bounded loops: at most 3 fix attempts (then stop and report BLOCKED with what was learned); one retry for refuted/uncertain work, then log it as a negative example.
+- **A repo's main checkout stays on `main`.** Sessions branch only in worktrees, never with `git switch` or `git checkout` in `~/workspace/repos/<repo>`: launch agents run that checkout, and `~/.claude/metalm` is metalm's, so a branch there reaches every session. The ops dashboard turns a checkout off `main` red. (owner, 2026-10-25)
 - Worktrees: never touch the owner's working copy; changes happen in a separate worktree removed after the run. Leave alone a file being edited in another session; note the follow-up. Two agent windows on one DB share state: before "restoring" a seemingly lost file, check the state tables (a 0-byte file may be a live writeup).
 - Higher-risk work (security; requirements/design drift): up to three parallel research subagents (principles, prior art, failure modes) under evidence discipline, then a cold review. Routine work needs no research team.
 - Never ungrounded invention: a step needing an unknown fact replans or asks. Read the source rather than reconstructing it from memory; search before assuming coverage exists.

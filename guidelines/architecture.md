@@ -45,7 +45,7 @@ Scope: what a good design looks like — principles, OOAD patterns, concurrency,
 - Only `setup` creates the workspace or writes the pointer. A missing workspace/DB/volume is a loud error; never mkdir or create an empty DB silently.
 
 ### Safety and failure
-- Nothing outbound (send, upload, publish, order, or spend above $0.50) happens without an explicit command; print what will be sent and wait for `--yes`; never decide on the owner's behalf.
+- Nothing outbound (send, upload, publish, order, or spend above $0.50) happens without an explicit command; print what will be sent and wait for `--live`; never decide on the owner's behalf.
 - Degradation announces itself: fall back with a visible notice; partial failure skips the unit loudly and builds the rest.
 - Never eager: worst-case damage bounded by construction; when in doubt leave content in. Safety in layers: structural invariants, a manifest of applied AND rejected actions, an LLM tripwire; risky items under the outbound, spend or irreversible gate default to REJECTED unless a human approves. When attribution is ambiguous, pause instead of acting (pausing is safe to get wrong; selling is not).
 - Every hard guard is paired with a proposal channel; "settled" means the expert decides again, not never again.

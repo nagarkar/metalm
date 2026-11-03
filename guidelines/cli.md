@@ -14,6 +14,7 @@ Scope: how every `*lm` repo's CLI is declared, documented, completed, printed an
 
 ## Output and errors
 - `--dry-run` is the preview flag and `--live` the go-ahead flag. Any verb that changes data or spends money accepts `--dry-run`: it prints what it would do and what it would cost, writes nothing and calls no model. Such a verb runs live by default, except one that is outbound or expensive (send, upload, publish, order, spend above $0.50): that one previews by default and goes ahead only with `--live`. A flag says what happens, not that someone agreed: never `--yes` or `--confirm`. A verb that spends refuses to start without a spend cap in config and a priced model. (owner)
+- `--force` is the override flag, a separate kind from the two above. A verb that stops on a warning or a failed check prints what stopped it and names `--force` as the way past; with `--force` it continues and prints what it overrode. It never stands in for `--live`. (owner)
 - Every verb prints a short board (counts, paths, hashes, a `next` hint), never content, payloads or images. `--json` prints the same board as one JSON object.
 - Unscoped queries return a summary plus narrowing guidance (relevance over offset; no pagination, no full dumps).
 - Per-verdict operations stay singular when each explanation is evidence; batch only naturally plural curation (one call, an operations array, a status per operation).

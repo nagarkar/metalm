@@ -44,6 +44,12 @@ Command line for metalm-ops: backups, status, the dashboard server, doctor and l
 
 Strict loader for `ops.toml`, the one gitignored list of what metalm watches.
 
+## `metalm_ops.deploy`
+
+`src/metalm_ops/deploy.py`
+
+`metalm-ops deploy` and `metalm-ops discover`: the two jobs this session kept writing by hand.
+
 ## `metalm_ops.doctor`
 
 `src/metalm_ops/doctor.py`

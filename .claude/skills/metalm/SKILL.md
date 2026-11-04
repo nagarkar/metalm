@@ -25,6 +25,8 @@ A change here reaches every repo that imports `guidelines/index.md` on its next 
 - `metalm-ops backup init`: creates the restic repository in the bucket, once.
 - `metalm-ops status [--alert]`: every check per repo; writes `status.json`; `--alert` sends one SuperLM banner when any check is red.
 - `metalm-ops serve [--port N]`: the dashboard; its launch agent runs it.
+- `metalm-ops deploy [--dry-run]`: after a metalm-ops PR merges, pulls main into the main checkout (only a clean checkout on `main`), restarts the dashboard through its agent, waits for /health and collects once.
+- `metalm-ops discover`: read-only list of SQLite files in the places below, `NEW` where ops.toml does not list one yet.
 - `metalm-ops doctor`: setup steps no code installs, each with its fix; the nightly job runs it first.
 - `metalm-ops schedule print backup|serve`: the launch agent plist to install; stderr prints the install command for the owner.
 - `metalm-ops help [verb]`, `metalm-ops completion`.
@@ -34,7 +36,7 @@ Restore a database: stop its app's server (ask the owner to unload its agent), c
 
 ### Finding databases
 
-`ops.toml` is filled by hand or by an agent asked to look. Check each repo in `docs/repos.md`, and list every live SQLite file as one `[[database]]` row:
+`ops.toml` is filled by hand or by an agent asked to look; `metalm-ops discover` searches the places below and marks what is missing. Check each repo in `docs/repos.md`, and list every live SQLite file as one `[[database]]` row:
 - The repo's `.env` keys ending in `_WORKSPACE`, `_DB` or `_DIR`: read only those keys, never print other values. A `_DB` key names the file; a `_WORKSPACE` key names a folder to search.
 - The repo's own skill and `doctor` verb first: they name the workspace and its store.
 - `~/.<repo>/` and `~/.<cli>/`: the CLI's name can differ from the repo's (authorllm's CLI is `authorlm`, so `~/.authorlm/authorlm.db`), and folders in the home folder named after the app.

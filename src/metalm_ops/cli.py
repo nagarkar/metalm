@@ -14,7 +14,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from metalm_ops import backup, doctor, offsite, schedule, server, status
+from metalm_ops import backup, deploy, doctor, offsite, schedule, server, status
 from metalm_ops.config import Config, ConfigError, load
 
 # (group, verb) -> (description, example)
@@ -27,6 +27,11 @@ LEAVES = {
     ("backup", "init"): ("Create the restic repository in the B2 bucket; run once.", "metalm-ops backup init"),
     ("status", None): ("Collect every check for every repo; --alert sends one SuperLM banner when any is red.", "metalm-ops status --json"),
     ("serve", None): ("Serve the dashboard on loopback until killed (the launch agent runs this).", "metalm-ops serve --port 8700"),
+    ("deploy", None): (
+        "After a metalm-ops merge: pull main into the main checkout, restart the dashboard, wait for /health, collect once.",
+        "metalm-ops deploy --dry-run",
+    ),
+    ("discover", None): ("List SQLite files in the usual places and mark which ops.toml lists; writes nothing.", "metalm-ops discover"),
     ("doctor", None): ("Check every setup step no code installs and print the fix for each miss.", "metalm-ops doctor"),
     ("schedule", "print"): ("Print the launch agent plist for the backup job or the dashboard.", "metalm-ops schedule print backup"),
     ("help", None): ("List every verb, or show one.", "metalm-ops help backup run"),
@@ -60,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
             leaf = _leaf(groups[group], group, verb)
         _globals(leaf, default=argparse.SUPPRESS)  # accepted after the verb too
         leaf.set_defaults(leaf=(group, verb))
-        if group == "backup" and verb in {"run", "offsite"}:
+        if group == "backup" and verb in {"run", "offsite"} or group == "deploy":
             leaf.add_argument("--dry-run", action="store_true", help="say what would happen; write and send nothing")
         if (group, verb) == ("backup", "offsite"):
             leaf.add_argument("--check", action="store_true", help="run the restic subset check even if one ran this week")
@@ -159,6 +164,21 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
     if leaf == ("serve", None):
         server.serve(cfg, args.port or cfg.port)
         return 0
+    if leaf == ("deploy", None):
+        steps = deploy.deploy(cfg, dry_run=args.dry_run)
+        _board(args, {"steps": steps, "next": "open the dashboard"}, steps)
+        return 0
+    if leaf == ("discover", None):
+        found = deploy.discover(cfg)
+        new = [f for f in found if not f.listed]
+        lines = [f"{'listed' if f.listed else 'NEW   '} {f.bytes / 1e6:8.1f} MB  {f.repo:13} {f.path}" for f in found]
+        board = {
+            "found": [{**asdict(f), "path": str(f.path)} for f in found],
+            "new": len(new),
+            "next": "add NEW rows that are live stores to ops.toml as [[database]]" if new else "ops.toml lists every store found",
+        }
+        _board(args, board, lines + [f"{len(new)} not in ops.toml"])
+        return 0
     if leaf == ("doctor", None):
         found = doctor.check(cfg)
         bad = doctor.failed(found)
@@ -187,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         return dispatch(args, parser)
     except SystemExit as exc:
         return 0 if exc.code == 0 else 1
-    except (ConfigError, offsite.OffsiteError, FileNotFoundError) as exc:
+    except (ConfigError, offsite.OffsiteError, deploy.DeployError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except BrokenPipeError:

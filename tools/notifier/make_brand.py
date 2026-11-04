@@ -36,6 +36,7 @@ APPS = {
     "computerlm": ("ComputerLM", "K", "0f9d8a", "0b5f6b"),
     "gamelm": ("GameLM", "G", "d946ef", "86198f"),
     "peoplelm": ("PeopleLM", "H", "c2773a", "7a3e1d"),
+    "podlm": ("PodLM", "D", "9f1239", "4c0519"),
 }
 
 

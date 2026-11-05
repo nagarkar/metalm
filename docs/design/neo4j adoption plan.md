@@ -320,14 +320,23 @@ which requires only that artifact references be stable and repo-qualified from d
 
 ## Next steps
 
-- [ ] Create the flowlm repo with `metalm-setup`; port to be assigned for the gate page
-      and added to the served-apps table.
+- [x] Create the flowlm repo with `metalm-setup`: private repo `nagarkar/flowlm`, first
+      slice in [nagarkar/flowlm#1](https://github.com/nagarkar/flowlm/pull/1) (procedure
+      loader, verb manifests, SQLite records, runner for `verb`, `gate`, `spend` and
+      `owner` steps, CLI, 182 tests). Registry row:
+      [nagarkar/metalm#76](https://github.com/nagarkar/metalm/pull/76). Awaiting the
+      owner's review of the decisions listed in the PR.
+- [ ] flowlm: `model`, `agent` and `wait` steps, the gate page (port to be assigned and
+      added to the served-apps table), eventlm events, notify on gate open, the tier
+      report, generated verb manifests. Drafted in flowlm's `ISSUES-DRAFT.md`.
 - [ ] metalm: guideline section for procedure files, the verb manifest, tiers, and the
       run-through-the-runner rule (decision 9).
 - [ ] llmlm: tier profiles (`neophyte`, `medium`, `expert`).
 - [ ] harvest-tools: the procedures pass.
-- [ ] Pilot 1, ytlm import: the stored filing proposal verb, board fields as
-      contracts, spend threshold in config (see [workflows-ytlm.md](neo4j/workflows-ytlm.md) (f)).
+- [ ] Pilot 1, ytlm import: procedure written (`procedures/ytlm.import-latest.yaml`
+      in flowlm) against a stub manifest. It cannot run for real until ytlm gains the
+      stored filing proposal verb (`corpus propose`, `corpus accept`), a scoped notes
+      refresh, board fields as `--json` contracts, and the spend threshold in config (see [workflows-ytlm.md](neo4j/workflows-ytlm.md) (f)).
 - [ ] Pilot 2, authorlm form round (see [workflows-authorlm.md](neo4j/workflows-authorlm.md) (f)).
 - [ ] Pilot 3, monologue script-and-media round (see [workflows-podlm.md](neo4j/workflows-podlm.md) (f)).
 - [ ] Pilot 4, beelm daily chain (see [workflows-beelm.md](neo4j/workflows-beelm.md) (f)).

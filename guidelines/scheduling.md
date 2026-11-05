@@ -63,5 +63,6 @@ Go down the list for the job's type whenever a scheduled job is created or chang
 - One idempotent `tick` verb runs every pending job from a jobs table under a lock with heartbeat (`--force` takes a dead lock); schedulers call `tick`; no resident daemon or queue broker.
 - A required volume unmounted: exit with a message, create nothing, let launchd retry. Fix by mounting, never `mkdir`.
 - No LLM spend runs unattended without a per-run and per-day cap (open question in authorllm).
+- A routine that opens PRs reads only pushed `main`. A routine whose PRs are closed unreviewed twice running is paused until the owner rules. (owner)
 - An irreplaceable database with no verified backup (`PRAGMA integrity_check` on a verified copy) is not deployed. Retention is the owner's call.
 - Before killing a "stalled" process, confirm via log tail and output growth. Long stages run in the background; check in rather than block.

@@ -10,6 +10,7 @@ Status: `compliant` (all checks pass), `adopted` (opted in, with exceptions list
 | beelm | nagarkar/beelm | unchecked | | | | |
 | computerlm | nagarkar/computerlm | compliant | 50cf31a94fb5ff626343f432ae94c2b299d07dce | 2026-10-21 | [nagarkar/computerlm#1](https://github.com/nagarkar/computerlm/pull/1) | setup PR open; brand row in this PR (on top of #42); no exceptions |
 | corpuslm | nagarkar/corpuslm | compliant | unrecorded | 2026-10-04 | | none documented |
+| flowlm | nagarkar/flowlm | attempted | aee5e80759cd7f8626d65ee1a434568884900b7d | 2026-11-04 | [nagarkar/flowlm#1](https://github.com/nagarkar/flowlm/pull/1) | new repo, setup PR open; plain argparse CLI awaits an owner ruling; per-guideline content check (6b) not run; no run lock, trace ledger or shared base columns yet |
 | gamelm | nagarkar/gamelm | unchecked | | | | |
 | llmlm | nagarkar/llmlm | unchecked | | | | imports metalm via its CLAUDE.md; lists no exceptions; no metalm-setup run recorded (nagarkar/metalm#47) |
 | publishinglm | nagarkar/publishinglm | attempted | ab00579c7358a7cce9e69df9a87a6a2face5ba08 | 2026-10-21 | [nagarkar/publishinglm#2](https://github.com/nagarkar/publishinglm/pull/2) | setup PR open: pre-commit hook file awaits the owner's first approval; launch agent and tailscale serve await the owner; brand in nagarkar/metalm#43; phase-3 choices taken as defaults, sent to the owner |

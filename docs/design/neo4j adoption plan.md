@@ -328,7 +328,7 @@ which requires only that artifact references be stable and repo-qualified from d
       owner's review of the decisions listed in the PR.
 - [ ] flowlm: `model`, `agent` and `wait` steps, the gate page (port to be assigned and
       added to the served-apps table), eventlm events, notify on gate open, the tier
-      report, generated verb manifests. Drafted in flowlm's `ISSUES-DRAFT.md`.
+      report, generated verb manifests. Filed as nagarkar/flowlm#2 to #13 and nagarkar/ytlm#157 to #163.
 - [ ] metalm: guideline section for procedure files, the verb manifest, tiers, and the
       run-through-the-runner rule (decision 9).
 - [ ] llmlm: tier profiles (`neophyte`, `medium`, `expert`).

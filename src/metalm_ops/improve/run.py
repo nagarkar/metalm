@@ -367,6 +367,7 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
             raise gates.GateError("pre-commit changed the tested proposal")
         if _command(["git", "status", "--porcelain"], cwd=worktree, directory=directory).strip():
             raise gates.GateError("pre-commit left uncommitted changes")
+        head = _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip()
         _command(["git", "push", "-u", "origin", branch], cwd=worktree, directory=directory)
         label_result = labels(config, repo=repository.name)
         if not label_result["ok"]:
@@ -435,7 +436,9 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
             _github(repository, "pr", "edit", str(row["pr_number"]), "--add-label", "auto-improve-rejected", directory=directory)
             row.update(outcome="rejected", reason=reason)
         else:
-            _github(repository, "pr", "merge", str(row["pr_number"]), "--" + selected.merge, "--delete-branch", directory=directory)
+            _github(
+                repository, "pr", "merge", str(row["pr_number"]), "--" + selected.merge, "--delete-branch", "--match-head-commit", head, directory=directory
+            )
             row.update(outcome="merged", reason="merged")
             try:
                 updated, detail = _update(repository, selected, directory)
@@ -448,6 +451,21 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
         return row
     except Exception as error:
         row.update(outcome="failed", reason=str(error))
+        if row.get("pr_number") and row.get("outcome") != "merged":
+            # A PR left open would block this repo every later night (an open auto-improve PR skips the run).
+            try:
+                _github(
+                    repository,
+                    "pr",
+                    "close",
+                    str(row["pr_number"]),
+                    "--delete-branch",
+                    "--comment",
+                    "Closed by auto-improve: the run failed: " + str(error)[:300],
+                    directory=directory,
+                )
+            except Exception as close_error:
+                row["reason"] = f"{error}; closing the PR also failed: {close_error}"
         return row
     except (KeyboardInterrupt, SystemExit) as error:
         row.update(outcome="failed", reason=f"run interrupted by {type(error).__name__}: {error}")

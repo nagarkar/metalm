@@ -128,7 +128,10 @@ def check(settings: Improve, selected: ImproveRepo, repository: Repo, worktree: 
     if result.returncode:
         raise GateError(f"test command failed (exit {result.returncode}): {test}")
     imports = []
-    for package in sorted((worktree / "src").glob("*/__init__.py")):
+    packages = sorted((worktree / "src").glob("*/__init__.py"))
+    if not packages:
+        raise GateError("no package under src/ to check that the tests imported the worktree's code")
+    for package in packages:
         name = package.parent.name
         script = f"import importlib; print(importlib.import_module({name!r}).__file__)"
         try:

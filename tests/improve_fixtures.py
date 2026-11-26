@@ -76,6 +76,7 @@ class World:
         self.import_inside = True
         self.crash_fetch = set()
         self.commit_fails = False
+        self.comment_fails = False
         self.deploy_fails = False
         self.edit = self.default_edit
         self.repos = {}
@@ -216,6 +217,8 @@ class World:
                     arguments, output="diff --git a/src/sample/__init__.py b/src/sample/__init__.py\n-# Add the pair.\n+# Return the sum of two numbers.\n"
                 )
             if action == ["pr", "comment"]:
+                if self.comment_fails:
+                    return self.completed(arguments, 1, "fixture comment failure")
                 body = (
                     Path(arguments[arguments.index("--body-file") + 1]).read_text() if "--body-file" in arguments else arguments[arguments.index("--body") + 1]
                 )

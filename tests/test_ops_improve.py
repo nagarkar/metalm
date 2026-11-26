@@ -805,3 +805,28 @@ def test_termination_signal_records_failure_cleans_up_and_restores_handler(world
     assert "SIGTERM" in rows[0]["reason"]
     assert signal.getsignal(signal.SIGTERM) == previous_handler
     world.assert_cleaned()
+
+
+def test_merge_is_pinned_to_the_reviewed_head_commit(world):
+    assert result(world)[1]["outcome"] == "merged"
+    merge = world.commands("gh", "pr", "merge")[0]
+    head = merge[merge.index("--match-head-commit") + 1]
+    assert len(head) == 40 and all(c in "0123456789abcdef" for c in head)
+
+
+def test_a_failure_after_the_pr_opens_closes_it(world):
+    world.comment_fails = True
+    row = result(world)[1]
+    assert row["outcome"] == "failed"
+    assert world.commands("gh", "pr", "close") and not world.commands("gh", "pr", "merge")
+
+
+def test_no_package_under_src_fails_the_import_gate(world):
+    def edit(worktree):
+        # A flat-layout repo: the package's __init__.py is gone, so src/ holds no package to check.
+        world.default_edit(worktree)
+        (worktree / "src" / "sample" / "__init__.py").rename(worktree / "src" / "sample" / "core.py")
+
+    world.edit = edit
+    row = result(world, no_pr=True)[1]
+    assert row["outcome"] == "gate-failed" and "no package under src/" in row["reason"]

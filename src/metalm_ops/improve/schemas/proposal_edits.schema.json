@@ -1,0 +1,147 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "skip": {
+      "type": "boolean",
+      "description": "True when no clear-cut improvement was made."
+    },
+    "skip_reason": {
+      "type": "string",
+      "description": "Why the proposer skipped, empty when proposing."
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "readability",
+        "documentation",
+        "duplication",
+        "tests",
+        "backend-robustness",
+        "frontend-robustness",
+        "ui",
+        "performance",
+        "drift"
+      ],
+      "description": "The one permitted kind of improvement."
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 72,
+      "description": "A short commit subject for the improvement."
+    },
+    "summary": {
+      "type": "string",
+      "description": "What changed and why it improves the repository."
+    },
+    "why_safe": {
+      "type": "string",
+      "description": "Why the change stays within the owner's boundaries."
+    },
+    "tests_run": {
+      "type": "string",
+      "description": "Tests actually run and their results, never invented."
+    },
+    "lens": {
+      "type": "string",
+      "enum": [
+        "readability",
+        "documentation",
+        "duplication",
+        "tests",
+        "backend-robustness",
+        "frontend-robustness",
+        "ui",
+        "performance",
+        "drift"
+      ],
+      "description": "The selected lens; equal to category."
+    },
+    "claim": {
+      "type": "string",
+      "description": "One falsifiable fact about the base code."
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "start_line",
+          "end_line",
+          "quote"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Repo-relative base file path."
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "First quoted base line, one-based."
+          },
+          "end_line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Last quoted base line, inclusive."
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact base excerpt; whitespace within a line may vary."
+          }
+        }
+      },
+      "description": "Evidence quoted from the base commit."
+    },
+    "measurement": {
+      "type": "string",
+      "description": "Before/after values and producing command for performance; empty otherwise."
+    },
+    "edits": {
+      "type": "array",
+      "description": "Exact text edits for Python to apply, in order. Each search must occur exactly once in the file at the base commit after earlier edits; an empty search creates a new file whose content is replace.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Repository-relative path."
+          },
+          "search": {
+            "type": "string",
+            "description": "Exact existing text, copied character for character with enough lines to be unique; empty to create a file."
+          },
+          "replace": {
+            "type": "string",
+            "description": "The replacement text."
+          }
+        },
+        "required": [
+          "path",
+          "search",
+          "replace"
+        ]
+      }
+    }
+  },
+  "required": [
+    "skip",
+    "skip_reason",
+    "category",
+    "title",
+    "summary",
+    "why_safe",
+    "tests_run",
+    "lens",
+    "claim",
+    "evidence",
+    "measurement",
+    "edits"
+  ]
+}

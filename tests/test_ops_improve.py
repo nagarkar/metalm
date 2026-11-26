@@ -409,7 +409,7 @@ def test_exact_codex_and_claude_flags_keep_contexts_isolated(world):
     assert proposer[1:9] == ["exec", "--ignore-user-config", "--ephemeral", "--color", "never", "--json", "-m", "gpt-6-astra"]
     assert 'model_reasoning_effort="high"' in proposer
     assert 'approval_policy="never"' in proposer
-    assert proposer[proposer.index("-s") + 1] == "workspace-write"
+    assert proposer[proposer.index("-s") + 1] == "read-only"  # single-shot: Codex edits nothing itself
     assert proposer[-1] == "-"
     assert "--full-auto" not in proposer and "--dangerously-bypass-approvals-and-sandbox" not in proposer
     for arguments in world.commands("claude"):
@@ -864,14 +864,28 @@ def test_no_package_under_src_fails_the_import_gate(world):
     assert row["outcome"] == "gate-failed" and "no package under src/" in row["reason"]
 
 
-def test_proposer_gets_the_finding_its_files_and_a_budget_not_the_whole_repo(world):
-    assert run.newest_prompt("propose").name == "propose_v4.md"
-    result(world, no_pr=True)
+def test_proposer_gets_the_finding_and_its_code_in_one_request_and_python_applies_the_edits(world):
+    assert run.newest_prompt("propose").name == "propose_v5.md"
+    _, row = result(world, no_pr=True)
     text = next(text for role, text, _ in world.prompts if role == "propose")
     assert "fixture finding" in text and '<file path="src/sample/__init__.py">' in text
-    assert "about 10 actions" in text and "do NOT run the repository's full test suite" in text
-    assert "<guidelines>" not in text  # the full guideline set is no longer sent
-    assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v4"}
+    assert "Do NOT run any command" in text and "<guidelines>" not in text
+    assert row["outcome"] == "no-pr"
+    assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v5"}
+
+
+@pytest.mark.parametrize(
+    "edits, reason",
+    [
+        ([{"path": "src/sample/__init__.py", "search": "not there", "replace": "x"}], "found 0 times"),
+        ([{"path": "../outside.py", "search": "", "replace": "x"}], "outside the repository"),
+        ([{"path": "src/sample/__init__.py", "search": "", "replace": "x"}], "already exists"),
+    ],
+)
+def test_single_shot_edits_that_do_not_apply_exactly_fail_the_gate(world, edits, reason):
+    world.proposal = {**world.proposal, "edits": edits}
+    _, row = result(world, no_pr=True)
+    assert row["outcome"] == "gate-failed" and reason in row["reason"]
 
 
 def test_no_measured_finding_for_the_lens_skips_without_calling_codex(world):

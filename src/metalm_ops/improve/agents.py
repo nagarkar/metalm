@@ -67,6 +67,14 @@ def rejected(reason: str) -> dict:
     return {"verdict": "reject", "clear_cut": False, "confidence": 0.0, "behaviour_change": False, "risks": [], "reasons": reason}
 
 
+def front_matter(template: str) -> dict[str, str]:
+    """`key: value` lines between a prompt file's leading `---` fences."""
+    if not template.startswith("---"):
+        return {}
+    head = template.split("---", 2)[1]
+    return {key.strip(): value.strip() for key, _, value in (line.partition(":") for line in head.splitlines()) if key.strip() and value.strip()}
+
+
 def prompt_id(template: str) -> str:
     """The `id:` from a prompt file's front matter, e.g. `propose_v2`; empty when it has none."""
     match = re.search(r"^id:\s*(\S+)\s*$", template.split("---", 2)[1] if template.startswith("---") else "", re.MULTILINE)
@@ -78,7 +86,11 @@ def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, d
     settings = config.improve
     assert settings is not None
     proposer = role == "propose"
-    schema_path = ROOT / "schemas" / ("proposal.schema.json" if proposer else "verify.schema.json" if role == "verify" else "verdict.schema.json")
+    declared = front_matter(template)
+    # A proposer prompt names its schema and mode; a single-shot prompt runs read-only and makes no edits itself.
+    oneshot = proposer and declared.get("mode") == "oneshot"
+    default = "proposal.schema.json" if proposer else "verify.schema.json" if role == "verify" else "verdict.schema.json"
+    schema_path = ROOT / "schemas" / (declared.get("output_schema", default) if proposer else default)
     schema_text = schema_path.read_text()
     answer_path = directory / f"{role}.json"
     directory.mkdir(parents=True, exist_ok=True)
@@ -124,7 +136,7 @@ def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, d
             "-C",
             str(worktree),
             "-s",
-            "workspace-write",
+            "read-only" if oneshot else "workspace-write",
             "-",
         ]
         timeout = settings.propose_timeout_min * 60

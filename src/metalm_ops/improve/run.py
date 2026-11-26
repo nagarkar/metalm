@@ -18,7 +18,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterator
 
 from metalm_ops import status as health
@@ -75,8 +75,8 @@ def _selected(config: Config, name: str | None) -> list[tuple[ImproveRepo, Repo]
     return [(item, repositories[item.name]) for item in selected]
 
 
-def _command(arguments: list[str], *, cwd: Path | None = None, directory: Path | None = None, timeout: float = 300) -> str:
-    result = process.run(arguments, cwd=cwd, timeout=timeout)
+def _command(arguments: list[str], *, cwd: Path | None = None, directory: Path | None = None, timeout: float = 300, env: dict | None = None) -> str:
+    result = process.run(arguments, cwd=cwd, timeout=timeout, env=env)
     if directory is not None:
         with (directory / "steps.log").open("a") as output:
             output.write(f"{arguments[0]} {arguments[1] if len(arguments) > 1 else ''}: exit {result.returncode}\n")
@@ -394,6 +394,41 @@ def newest_prompt(name: str, folder: str = "prompts") -> Path:
     return max(versions)[1]
 
 
+def _link_env(repository: Repo, worktree: Path) -> None:
+    """Link the checkout's ignored `.env` into the worktree for the gate's test run only. It is linked
+    after the proposer has answered, so the model never sees the secrets, and kept out of the diff."""
+    source, link = repository.path / ".env", worktree / ".env"
+    if not source.is_file() or link.exists() or link.is_symlink():
+        return
+    link.symlink_to(source)
+    if subprocess.run(["git", "check-ignore", "-q", ".env"], cwd=worktree, capture_output=True).returncode != 0:
+        exclude = Path(_command(["git", "rev-parse", "--git-path", "info/exclude"], cwd=worktree).strip())
+        exclude = exclude if exclude.is_absolute() else worktree / exclude
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        with exclude.open("a") as handle:
+            handle.write("/.env\n")
+
+
+def _link_node_modules(repository: Repo, worktree: Path) -> None:
+    """Give the worktree the checkout's installed node_modules folders (ignored by git, so a fresh worktree
+    lacks them), so JS-backed tests such as ytlm's tests/js run in the gate as they do in the checkout."""
+    found = process.run(["git", "-C", str(repository.path), "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
+    for entry in (found.stdout or "").split("\0"):
+        relative = entry.rstrip("/")
+        if not relative or PurePosixPath(relative).name != "node_modules" or ".venv" in PurePosixPath(relative).parts:
+            continue
+        source, link = repository.path / relative, worktree / relative
+        if source.is_dir() and not link.exists() and link.parent.is_dir():
+            link.symlink_to(source, target_is_directory=True)
+            # A `node_modules/` ignore pattern does not match a symlink; keep the link out of the diff.
+            if subprocess.run(["git", "check-ignore", "-q", relative], cwd=worktree, capture_output=True).returncode != 0:
+                exclude = Path(_command(["git", "rev-parse", "--git-path", "info/exclude"], cwd=worktree).strip())
+                exclude = exclude if exclude.is_absolute() else worktree / exclude
+                exclude.parent.mkdir(parents=True, exist_ok=True)
+                with exclude.open("a") as handle:
+                    handle.write(f"/{relative}\n")
+
+
 def _link_venv(repository: Repo, worktree: Path, directory: Path) -> None:
     """Give the worktree the repo's `.venv` as a symlink, so pre-commit hooks with a relative
     `entry: .venv/bin/...` (computerlm's import-contracts) run at commit time. The link must stay
@@ -447,24 +482,72 @@ def recent_targets(config: Config, repo: str, now: datetime) -> set[str]:
 
 
 def _target_text(worktree: Path, paths: list[str], target: dict | None = None) -> str:
-    """Target files with line numbers: short files whole, the finding's file as a window around it, others' heads."""
+    """Target files with line numbers: short files whole; long files as windows around the finding and,
+    for duplication, around the other copy (which may be in the same file); other long files' heads."""
+    focus: dict[str, list[tuple[int, int]]] = {}
+    if target:
+        focus.setdefault(target["path"], []).append((target["start_line"], max(target["end_line"], target["start_line"])))
+        other = target.get("other")
+        if other:
+            focus.setdefault(other["path"], []).append((other["start_line"], other["end_line"]))
     blocks = []
-    for index, path in enumerate(paths):
+    for path in paths:
         try:
             lines = (worktree / path).read_text().splitlines()
         except (OSError, UnicodeDecodeError):
             continue
         if len(lines) <= SHORT:
-            first, last = 1, len(lines)
-        elif index == 0 and target:
-            first = max(1, target["start_line"] - WINDOW)
-            last = min(len(lines), max(target["end_line"], target["start_line"]) + WINDOW)
+            spans = [(1, len(lines))]
+        elif path in focus:
+            spans = sorted((max(1, first - WINDOW), min(len(lines), last + WINDOW)) for first, last in focus[path])
+            merged = [spans[0]]
+            for first, last in spans[1:]:
+                if first <= merged[-1][1] + 1:
+                    merged[-1] = (merged[-1][0], max(merged[-1][1], last))
+                else:
+                    merged.append((first, last))
+            spans = merged
         else:
-            first, last = 1, min(len(lines), SUPPORT_LINES)
-        note = f" lines {first}-{last} of {len(lines)}; read more only if your change needs it" if (first, last) != (1, len(lines)) else ""
-        body = "\n".join(f"{number}: {lines[number - 1]}" for number in range(first, last + 1))
-        blocks.append(f'<file path="{path}"{" note=" + repr(note.strip()) if note else ""}>\n{body}\n</file>')
+            spans = [(1, min(len(lines), SUPPORT_LINES))]
+        shown = sum(last - first + 1 for first, last in spans)
+        note = f" note='{shown} of {len(lines)} lines shown; ask nothing, skip if the fix needs unseen code'" if shown < len(lines) else ""
+        body = "\n...\n".join("\n".join(f"{number}: {lines[number - 1]}" for number in range(first, last + 1)) for first, last in spans)
+        blocks.append(f'<file path="{path}"{note}>\n{body}\n</file>')
     return "\n".join(blocks)
+
+
+def _format(repository: Repo, worktree: Path, paths: list[str]) -> None:
+    """Format the edited Python files with the repo's own ruff and config, as its ruff-format hook would;
+    a single-shot answer cannot run the formatter itself, and a reformat at commit time aborts the commit."""
+    ruff = repository.path / ".venv" / "bin" / "ruff"
+    files = sorted({path for path in paths if path.endswith(".py") and (worktree / path).is_file()})
+    if ruff.is_file() and files:
+        process.run([str(ruff), "format", "--quiet", *files], cwd=worktree)
+
+
+def apply_edits(worktree: Path, edits: list[dict]) -> None:
+    """Apply a single-shot proposal's exact search/replace edits; any edit that does not match exactly once fails the gate."""
+    if not edits:
+        raise gates.GateError("proposal has no edits: no file changed")
+    root = worktree.resolve()
+    for number, item in enumerate(edits, 1):
+        path = (worktree / item["path"]).resolve()
+        if not path.is_relative_to(root) or ".git" in Path(item["path"]).parts:
+            raise gates.GateError(f"edit {number}: path outside the repository: {item['path']}")
+        if item["search"] == "":
+            if path.exists():
+                raise gates.GateError(f"edit {number}: {item['path']} already exists; an empty search only creates files")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(item["replace"])
+            continue
+        try:
+            text = path.read_text()
+        except (OSError, UnicodeDecodeError) as error:
+            raise gates.GateError(f"edit {number}: cannot read {item['path']}: {error}") from error
+        count = text.count(item["search"])
+        if count != 1:
+            raise gates.GateError(f"edit {number}: search text found {count} times in {item['path']}, expected exactly once")
+        path.write_text(text.replace(item["search"], item["replace"], 1))
 
 
 def _silences(worktree: Path, directory: Path) -> str:
@@ -569,6 +652,7 @@ def _run_repo(
         _command(["git", "-C", str(repository.path), "worktree", "add", "-b", branch, str(worktree), "origin/main"], directory=directory)
         created = True
         _link_venv(repository, worktree, directory)
+        _link_node_modules(repository, worktree)
         available = lenses.applicable(selected, _command(["git", "ls-files", "-z"], cwd=worktree, directory=directory).split("\0"))
         chosen = forced_lens or lenses.choose(available, store.read_runs(config, repository.name, limit=1000000))
         if chosen not in available:
@@ -638,6 +722,9 @@ def _run_repo(
             return row
         if proposal["lens"] != chosen or proposal["category"] != chosen:
             raise gates.GateError(f"proposal must use selected lens {chosen}")
+        if "edits" in proposal:
+            apply_edits(worktree, proposal["edits"])
+            _format(repository, worktree, [item["path"] for item in proposal["edits"]])
         row.update(title=proposal["title"])
         quote_error = gates.check_evidence(worktree, proposal["evidence"], base)
         if quote_error:
@@ -660,6 +747,7 @@ def _run_repo(
         silenced = _silences(worktree, directory)
         if silenced:
             raise gates.GateError(f"proposal silences a check instead of fixing it: {silenced}")
+        _link_env(repository, worktree)
         measured = gates.check(settings, selected, repository, worktree, directory)
         _keep_junit(config, repository.name, directory)
         after = signals.measure(worktree, ruff_bin=RUFF_BIN, excludes=excludes, thresholds=selected.thresholds, junit=directory / "junit.xml", now=started)
@@ -678,7 +766,9 @@ def _run_repo(
         _command(["git", "add", "-A"], cwd=worktree, directory=directory)
         message = f"{proposal['title']}\n\nAuto-improve-run: {run_id}\nCo-Authored-By: Codex <noreply@openai.com>\n"
         try:
-            _command(["git", "commit", "-m", message], cwd=worktree, directory=directory)
+            # Hooks such as import-linter import the package: point them at the worktree's code, not the checkout's.
+            hooks_env = {**os.environ, "PYTHONPATH": str(worktree / "src") + (os.pathsep + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")}
+            _command(["git", "commit", "-m", message], cwd=worktree, directory=directory, env=hooks_env)
         except ImproveError as error:
             raise gates.GateError(f"commit or pre-commit hook failed: {error}") from error
         if gates.inspect(settings, selected, worktree)["fingerprint"] != measured["fingerprint"]:

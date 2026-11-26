@@ -223,6 +223,22 @@ class World:
         path = worktree / "src" / "sample" / "__init__.py"
         path.write_text(path.read_text().replace("# Add the pair.", "# Return the sum of two numbers."))
 
+    def as_edits(self, worktree: Path) -> list[dict]:
+        """Run the fixture edit, record each changed file as one whole-file edit, then restore the worktree."""
+        before = {path: path.read_bytes() for path in worktree.rglob("*") if path.is_file() and ".git" not in path.parts and ".venv" not in path.parts}
+        self.edit(worktree)
+        after = {path: path.read_bytes() for path in worktree.rglob("*") if path.is_file() and ".git" not in path.parts and ".venv" not in path.parts}
+        edits = []
+        for path, content in sorted(after.items()):
+            relative = str(path.relative_to(worktree))
+            if path not in before:
+                edits.append({"path": relative, "search": "", "replace": content.decode()})
+                path.unlink()
+            elif before[path] != content:
+                edits.append({"path": relative, "search": before[path].decode(), "replace": content.decode()})
+                path.write_bytes(before[path])
+        return edits
+
     def measure(self, root, **options):
         count = self.measures.get(str(root), 0)
         self.measures[str(root)] = count + 1
@@ -245,8 +261,15 @@ class World:
                 raise self.proposal_error
             if self.proposal_exit:
                 return self.completed(arguments, code=self.proposal_exit[0], output=self.proposal_exit[1])
-            self.edit(worktree)
-            answer = self.proposal if isinstance(self.proposal, str) else json.dumps(self.proposal)
+            proposal = self.proposal
+            if "read-only" in arguments and isinstance(proposal, dict) and not proposal.get("skip") and "edits" not in proposal:
+                # A single-shot Codex edits nothing itself: turn the fixture's edit into exact search/replace edits.
+                proposal = {**proposal, "edits": self.as_edits(worktree)}
+            elif "read-only" not in arguments:
+                self.edit(worktree)
+            elif isinstance(proposal, dict) and "edits" not in proposal:
+                proposal = {**proposal, "edits": []}
+            answer = proposal if isinstance(proposal, str) else json.dumps(proposal)
             Path(arguments[arguments.index("-o") + 1]).write_text(answer)
             return self.completed(arguments, output='{"type":"turn.completed"}\n')
         if executable == "claude":

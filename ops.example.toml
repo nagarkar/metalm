@@ -58,6 +58,8 @@ name = "computerlm"            # path and github come from its [[repo]] row
 test = "{venv}/bin/pytest -q"  # {venv} is the repo's .venv; {worktree} is the isolated worktree
 merge = "merge"                # merge | squash | rebase
 exclude = []                   # additional fnmatch-style globs
+# Optional subset; omit for every applicable lens. An empty list disables all lenses.
+lenses = ["readability", "documentation", "duplication", "tests", "backend-robustness", "frontend-robustness", "ui", "performance", "drift"]
 # deploy = "launchctl kickstart -k gui/$(id -u)/com.example.computerlm.serve"
 
 [[improve.repo]]

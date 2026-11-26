@@ -199,6 +199,8 @@ def test_owner_line_additions_and_removals_are_blocked(world, removed):
     if removed:
         source = world.repos["alm"] / "src" / "sample" / "__init__.py"
         source.write_text("# Preserve arithmetic. (owner)\n" + source.read_text())
+        # #84: quote the original comment at its new base line so this still tests the owner-line gate.
+        world.proposal = {**PROPOSAL, "evidence": [{**PROPOSAL["evidence"][0], "start_line": 2, "end_line": 2}]}
         git(world.repos["alm"], "add", "src/sample/__init__.py")
         git(world.repos["alm"], "commit", "-m", "Owner rule fixture")
         git(world.repos["alm"], "push", "origin", "main")
@@ -258,9 +260,11 @@ def test_two_approvals_and_green_ci_merge_with_provenance(world):
     assert message.splitlines()[0] == PROPOSAL["title"]
     assert f"Auto-improve-run: {row['run_id']}" in message
     assert "Co-Authored-By: Codex <noreply@openai.com>" in message
-    assert len(world.comments) == 2
-    assert world.comments[0].startswith("### auto-improve review: senior engineer (Claude claude-opus-5-5)")
-    assert world.comments[1].startswith("### auto-improve review: boundaries (Claude claude-opus-5-5)")
+    # Issue #84 adds the verifier before both independent reviews.
+    assert len(world.comments) == 3
+    assert world.comments[0].startswith("### auto-improve review: verifier (Claude claude-opus-5-5)")
+    assert world.comments[1].startswith("### auto-improve review: senior engineer (Claude claude-opus-5-5)")
+    assert world.comments[2].startswith("### auto-improve review: boundaries (Claude claude-opus-5-5)")
     assert "--merge" in world.commands("gh", "pr", "merge")[0]
     assert "--delete-branch" in world.commands("gh", "pr", "merge")[0]
     assert not world.commands("gh", "pr", "close")
@@ -314,9 +318,14 @@ def test_confidence_boundary_is_inclusive(world, confidence):
 
 
 def test_ui_can_change_visible_behaviour(world):
-    world.proposal = {**PROPOSAL, "category": "ui"}
+    # Issue #84 chooses a lens before proposing and disables UI without tracked frontend.
+    (world.repos["alm"] / "app.html").write_text("<button>Save</button>\n")
+    git(world.repos["alm"], "add", "app.html")
+    git(world.repos["alm"], "commit", "-m", "Frontend fixture")
+    git(world.repos["alm"], "push", "origin", "main")
+    world.proposal = {**PROPOSAL, "category": "ui", "lens": "ui"}
     world.verdicts[1] = {**VERDICT, "behaviour_change": True}
-    assert result(world)[1]["outcome"] == "merged"
+    assert result(world, repo="alm", lens="ui")[1]["outcome"] == "merged"
 
 
 @pytest.mark.parametrize(
@@ -467,7 +476,7 @@ def test_daily_caps_stop_remaining_repos(tmp_path, monkeypatch, cap):
 def test_every_call_has_persistent_provenance_and_raw_artifacts(world):
     _, row = result(world)
     calls = world.ledger("call")
-    assert len(calls) == 3 and len(world.ledger("run")) == 1
+    assert len(calls) == 4 and len(world.ledger("run")) == 1
     assert {call["provider"] for call in calls} == {"openai", "anthropic"}
     assert {call["model"] for call in calls} == {"gpt-6-astra", "claude-opus-5-5"}
     for call in calls:
@@ -481,9 +490,9 @@ def test_every_call_has_persistent_provenance_and_raw_artifacts(world):
         else:
             assert call["cost"] == pytest.approx(0.1)
     usage = store.usage(world.config)
-    assert usage["codex_calls"] == 1 and usage["review_cost_usd"] == pytest.approx(0.2)
+    assert usage["codex_calls"] == 1 and usage["review_cost_usd"] == pytest.approx(0.3)
     directory = world.config.state_dir / "improve" / "runs" / row["run_id"] / "alm"
-    for filename in ("propose.jsonl", "propose.json", "review-senior.json", "review-boundaries.json"):
+    for filename in ("propose.jsonl", "propose.json", "verify.json", "review-senior.json", "review-boundaries.json"):
         assert (directory / filename).is_file()
 
 
@@ -518,11 +527,12 @@ def test_dry_run_reports_history_pause_without_writing_marker(world):
 def test_review_cost_is_counted_even_when_reviewer_errors(world):
     world.review_envelope = {"structured_output": VERDICT, "is_error": True, "total_cost_usd": 0.25}
     assert result(world)[1]["outcome"] == "rejected"
-    assert store.usage(world.config)["review_cost_usd"] == pytest.approx(0.5)
+    assert store.usage(world.config)["review_cost_usd"] == pytest.approx(0.6)
 
 
 def test_review_cap_reached_between_reviewers_prevents_second_call(world):
-    world.configure(max_review_cost_usd_per_day=0.05)
+    # Issue #84 spends 0.1 on verification before the first reviewer.
+    world.configure(max_review_cost_usd_per_day=0.15)
     _, row = result(world)
     assert row["outcome"] == "rejected"
     assert world.review_count == 1
@@ -543,7 +553,7 @@ def test_model_timeouts_are_each_configured_in_minutes(world):
     result(world)
     timed = [(arguments, timeout) for arguments, _, timeout in world.calls]
     assert next(timeout for arguments, timeout in timed if arguments[0].endswith("/codex")) == 180
-    assert [timeout for arguments, timeout in timed if arguments[0].endswith("/claude")] == [120, 120]
+    assert [timeout for arguments, timeout in timed if arguments[0].endswith("/claude")] == [120, 120, 120]  # #84: verifier uses the same review timeout.
     assert next(timeout for arguments, timeout in timed if arguments[1:3] == ["pr", "checks"]) == 240
 
 
@@ -833,10 +843,10 @@ def test_no_package_under_src_fails_the_import_gate(world):
 
 
 def test_proposer_uses_the_newest_prompt_and_is_told_not_to_skip_for_a_sandboxed_suite(world):
-    assert run.newest_prompt("propose").name == "propose_v2.md"
+    assert run.newest_prompt("propose").name == "propose_v3.md"
     result(world, no_pr=True)
     assert any(role == "propose" and "Never skip only because the sandbox blocked the tests" in text for role, text, _ in world.prompts)
-    assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v2"}
+    assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v3"}
 
 
 def test_worktree_gets_the_repo_venv_as_an_ignored_symlink(world):

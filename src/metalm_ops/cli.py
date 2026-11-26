@@ -82,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
         if (group, verb) == ("improve", "labels"):
             leaf.add_argument("--dry-run", action="store_true", help="preview label definitions without changing GitHub")
         if (group, verb) == ("improve", "run"):
+            leaf.add_argument("--lens", help="force one lens (requires --repo)")
             preview = leaf.add_mutually_exclusive_group()
             preview.add_argument("--dry-run", action="store_true", help="preview skips and caps; call no model and write nothing")
             preview.add_argument("--no-pr", action="store_true", help="run the proposer and gates, then discard; no commit or PR")
@@ -105,7 +106,7 @@ def completion_script() -> str:
         '  local cur="${COMP_WORDS[COMP_CWORD]}" words\n'
         '  if [ "$COMP_CWORD" -eq 1 ]; then words="' + " ".join(groups) + '"\n'
         '  else case "${COMP_WORDS[1]}" in\n' + cases + '    *) words="";;\n  esac; fi\n'
-        '  COMPREPLY=($(compgen -W "$words --json --config --dry-run --no-pr --repo --alert --port" -- "$cur"))\n'
+        '  COMPREPLY=($(compgen -W "$words --json --config --dry-run --no-pr --repo --lens --alert --port" -- "$cur"))\n'
         "}\ncomplete -F _metalm_ops metalm-ops\n"
     )
 
@@ -154,7 +155,7 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
     cfg: Config = load(args.config)
     if leaf[0] == "improve":
         if leaf[1] == "run":
-            board = improve.run(cfg, repo=args.repo, dry_run=args.dry_run, no_pr=args.no_pr)
+            board = improve.run(cfg, repo=args.repo, dry_run=args.dry_run, no_pr=args.no_pr, lens=args.lens)
         elif leaf[1] == "labels":
             board = improve.labels(cfg, repo=args.repo, dry_run=args.dry_run)
         else:
@@ -163,7 +164,7 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
         for repository in board.get("repos", []):
             lines.append(f"{repository['name']}: {'paused' if repository['paused'] else 'not paused'}")
         for row in board.get("rows", []):
-            lines.append(" ".join(" ".join(str(row.get(key, "")).split()) for key in ("repo", "started", "outcome", "pr_url", "reason")).strip())
+            lines.append(" ".join(" ".join(str(row.get(key, "")).split()) for key in ("repo", "started", "lens", "outcome", "pr_url", "reason")).strip())
             if row.get("diff_stat"):
                 lines.append(row["diff_stat"])
             if row.get("gates"):

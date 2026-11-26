@@ -15,7 +15,11 @@ from metalm_ops.config import parse
 PROPOSAL = {
     "skip": False,
     "skip_reason": "",
-    "category": "docs",
+    "category": "readability",
+    "lens": "readability",
+    "claim": "The arithmetic comment is less precise than the code.",
+    "evidence": [{"path": "src/sample/__init__.py", "start_line": 1, "end_line": 1, "quote": "# Add the pair."}],
+    "measurement": "",
     "title": "Correct the arithmetic helper comment",
     "summary": "Correct one stale comment.",
     "why_safe": "Only a comment changes.",
@@ -64,6 +68,9 @@ class World:
         self.proposal = dict(PROPOSAL)
         self.verdicts = [dict(VERDICT), dict(VERDICT)]
         self.review_count = 0
+        self.verification = {"verdict": "confirmed", "counter_evidence": [], "reasons": "The claim survives disproof."}
+        self.verify_count = 0
+        self.verify_envelope = None
         self.review_cost = 0.1
         self.proposal_error = None
         self.review_error = None
@@ -176,7 +183,15 @@ class World:
             return self.completed(arguments, output='{"type":"turn.completed"}\n')
         if executable == "claude":
             assert directory and directory.is_relative_to(self.root) and directory.exists()
-            self.prompts.append(("review", input, arguments))
+            schema = json.loads(arguments[arguments.index("--json-schema") + 1])
+            verifying = "confirmed" in schema["properties"]["verdict"]["enum"]
+            self.prompts.append(("verify" if verifying else "review", input, arguments))
+            if verifying:
+                self.verify_count += 1
+                envelope = self.verify_envelope
+                if envelope is None:
+                    envelope = {"structured_output": self.verification, "total_cost_usd": self.review_cost, "is_error": False}
+                return self.completed(arguments, output=envelope if isinstance(envelope, str) else json.dumps(envelope))
             if self.review_error:
                 raise self.review_error
             verdict = self.verdicts[self.review_count % 2]

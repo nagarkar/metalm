@@ -214,3 +214,10 @@ def test_front_end_files_get_churn_findings_for_the_front_end_lenses(tmp_path):
     git(root, "commit", "-qm", "front end")
     found = [item for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["signal"] == "frontend-churn"]
     assert [item["path"] for item in found] == ["static/app.js"] and found[0]["lenses"] == ["frontend-robustness", "ui"]
+
+
+def test_password_rules_skip_values_that_are_setting_names(tmp_path):
+    root = plant(tmp_path / "repo")
+    (root / "src" / "pkg" / "names.py").write_text('"""Names."""\nTOKEN_VAR = "PLANNER_TOKEN"\nPASSWORD = "hunter22!"\n')
+    found = [item for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["path"] == "src/pkg/names.py" and item["signal"] == "security"]
+    assert [item["start_line"] for item in found] == [3]

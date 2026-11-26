@@ -179,6 +179,18 @@ def size(root: Path, sources: list[str], limits: dict, parsed: dict) -> list[dic
     return found
 
 
+PASSWORD_CODES = {"S105", "S106", "S107"}
+
+
+def _names_a_variable(text: str, line: int) -> bool:
+    """ruff's hard-coded-password rules fire on names like TOKEN = "PLANNER_TOKEN"; a value that is itself
+    an environment-variable or setting name is not a secret."""
+    lines = text.splitlines()
+    source = lines[line - 1] if 0 < line <= len(lines) else ""
+    values = re.findall(r"""["']([^"']*)["']""", source)
+    return bool(values) and all(re.fullmatch(r"[A-Z][A-Z0-9_]*|[a-z][a-z0-9]*(?:[_.-][a-z0-9]+)+", value) for value in values)
+
+
 def ruff(root: Path, sources: list[str], ruff_bin: Path, limits: dict, parsed: dict) -> list[dict]:
     """Complexity, security and missing-docstring findings from metalm's ruff, ignoring the repo's config."""
     if not sources:
@@ -221,6 +233,8 @@ def ruff(root: Path, sources: list[str], ruff_bin: Path, limits: dict, parsed: d
             value, limit = (int(numbers.group(1)), int(numbers.group(2))) if numbers else (1, 0)
             found.append(finding("complexity", path, start, end, code, value, limit, message, symbol))
         elif code.startswith("S"):
+            if code in PASSWORD_CODES and _names_a_variable(parsed.get(path, ("", None))[0], start):
+                continue
             found.append(finding("security", path, start, end, code, 1, 0, message, symbol))
         elif code.startswith("D"):
             found.append(finding("docs", path, start, end, code, 1, 0, message, symbol))

@@ -1,7 +1,1 @@
-[[braked]]
-repo = "improve-canary"
-since = "2026-11-26T09:09:06.201376-08:00"
-reason = "stalled"
-summary = "five consecutive runs ended without a PR"
-runs = ["20261126T090906-888d311f", "20261126T090831-f1433e7c", "20261126T090803-c8fc4327", "20261126T090733-2a762406", "20261126T090704-ee1545d7"]
-prs = []
+braked = []

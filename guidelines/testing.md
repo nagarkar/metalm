@@ -9,6 +9,7 @@ A test exists to fail when behaviour a user relies on breaks. A test that cannot
 - Never weaken, loosen, delete, skip or `xfail` a test to get green. Changing an assertion requires a requirement change (see Anti-gaming b).
 - Run the WHOLE suite (every suite in the repo, not just near the change) before changing anything and again after. Leave out only live/network/paid suites, each listed with why. Note pre-existing failures.
 - New failure = failing now, passed before. Fix until none, or report it. Never open a PR with new failures. A run that is not the full suite ends with no PR.
+- CI runs the default test suite on every PR. (owner)
 - Report results verbatim (command + summary line). Label untested paths "untested".
 - Passes-on-rerun without a code change = flaky-test finding, filed, not a pass. Prove zero flakes with two identical full runs after large changes; establish a trusted subset of a new repo by running the full suite 3x.
 - Every code change adds or updates a test (lessons and fixes included). A fix proposal carries its encoded test.

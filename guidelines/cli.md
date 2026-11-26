@@ -13,7 +13,8 @@ Scope: how every `*lm` repo's CLI is declared, documented, completed, printed an
 - An interactive shell (history, prompt, in-process verbs) is built only for a tool with a session to hold (authorlm); a stateless tool does not have one.
 
 ## Output and errors
-- `--dry-run` is the one preview flag: any verb that changes data or spends money accepts it, prints what it would do and what it would cost, writes nothing and calls no model. Without it the verb runs live. A verb that spends refuses to start without a spend cap in config and a priced model. (owner)
+- `--dry-run` is the preview flag and `--live` the go-ahead flag. Any verb that changes data or spends money accepts `--dry-run`: it prints what it would do and what it would cost, writes nothing and calls no model. Such a verb runs live by default, except one that is outbound or expensive (send, upload, publish, order, spend above $0.50): that one previews by default and goes ahead only with `--live`. A flag says what happens, not that someone agreed: never `--yes` or `--confirm`. A verb that spends refuses to start without a spend cap in config and a priced model. (owner)
+- `--force` is the override flag, a separate kind from the two above. A verb that stops on a warning or a failed check prints what stopped it and names `--force` as the way past; with `--force` it continues and prints what it overrode. It never stands in for `--live`. (owner)
 - Every verb prints a short board (counts, paths, hashes, a `next` hint), never content, payloads or images. `--json` prints the same board as one JSON object.
 - Unscoped queries return a summary plus narrowing guidance (relevance over offset; no pagination, no full dumps).
 - Per-verdict operations stay singular when each explanation is evidence; batch only naturally plural curation (one call, an operations array, a status per operation).
@@ -26,4 +27,4 @@ Scope: how every `*lm` repo's CLI is declared, documented, completed, printed an
 - `doctor` lists each check with its state, detail and fix, exits 1 when a required check fails, and every scheduled job runs it first.
 
 ## Tests that hold the surface
-- One test per rule: every leaf has a description and an example; `help` lists every leaf; every leaf resolves to an API function; `--json` boards parse and carry `next`; a usage error exits 1; the completion script loads in a real bash and offers a subverb; the repo skill names every leaf verb; no verb prints content; the MCP tool set (if any) equals its declared list, with each CLI-only verb justified.
+- One test per rule: every leaf has a description and an example; `help` lists every leaf; every leaf resolves to an API function; `--json` boards parse and carry `next`; a usage error exits 1; the completion script loads in a real bash and offers a subverb; the repo skill names every leaf verb; no verb declares `--yes`; no verb prints content; the MCP tool set (if any) equals its declared list, with each CLI-only verb justified.

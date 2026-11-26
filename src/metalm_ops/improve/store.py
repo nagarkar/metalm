@@ -6,6 +6,7 @@ counts against the daily Codex cap. Days follow the owner's local timezone.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import closing
 from datetime import datetime
@@ -30,8 +31,10 @@ CREATE TABLE IF NOT EXISTS call (
  billing TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS call_day ON call(day);
-CREATE TABLE IF NOT EXISTS pause (
- repo TEXT PRIMARY KEY, fingerprint TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS step (
+ id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, repo TEXT NOT NULL,
+ fingerprint TEXT NOT NULL, step TEXT NOT NULL, outcome TEXT NOT NULL,
+ recorded TEXT NOT NULL, details TEXT NOT NULL
 );
 """
 
@@ -134,16 +137,28 @@ def usage(config: Config) -> dict:
         return {"codex_calls": row[0], "review_cost_usd": row[1], "calls": row[2]}
 
 
-def pause_seen(config: Config, repo: str, fingerprint: str) -> bool:
-    """Whether this rejected streak already paused a repo before an owner unpaused it."""
-    if not path(config).exists():
-        return False
-    with closing(sqlite3.connect(path(config).resolve().as_uri() + "?mode=ro", uri=True)) as connection:
-        return connection.execute("SELECT 1 FROM pause WHERE repo=? AND fingerprint=?", (repo, fingerprint)).fetchone() is not None
-
-
-def record_pause(config: Config, repo: str, fingerprint: str) -> None:
-    """Remember a rejected streak so deleting its pause file actually resumes work."""
+def record_step(config: Config, *, run_id: str, repo: str, fingerprint: str, step: str, outcome: str, details: dict) -> None:
+    """Append an immutable brake attempt or completion, including its remote IDs."""
+    initialize(config)
     with closing(sqlite3.connect(path(config))) as connection:
-        connection.execute("INSERT INTO pause VALUES (?, ?) ON CONFLICT(repo) DO UPDATE SET fingerprint=excluded.fingerprint", (repo, fingerprint))
+        connection.execute(
+            "INSERT INTO step (run_id,repo,fingerprint,step,outcome,recorded,details) VALUES (?,?,?,?,?,?,?)",
+            (run_id, repo, fingerprint, step, outcome, datetime.now().astimezone().isoformat(), json.dumps(details)),
+        )
         connection.commit()
+
+
+def read_steps(config: Config, repo: str, fingerprint: str | None = None) -> list[dict]:
+    """Read chronological brake events without creating or migrating a ledger."""
+    if not path(config).exists():
+        return []
+    with closing(sqlite3.connect(path(config).resolve().as_uri() + "?mode=ro", uri=True)) as connection:
+        if not connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='step'").fetchone():
+            return []
+        connection.row_factory = sqlite3.Row
+        query = "SELECT * FROM step WHERE repo=?"
+        parameters = [repo]
+        if fingerprint is not None:
+            query += " AND fingerprint=?"
+            parameters.append(fingerprint)
+        return [{**dict(row), "details": json.loads(row["details"])} for row in connection.execute(query + " ORDER BY id", parameters)]

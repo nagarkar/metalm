@@ -261,11 +261,17 @@ def save(cfg: Config, status: dict) -> Path:
 
 def improve_row(configuration: Config, repository: str, now: datetime, *, loaded: bool) -> Check:
     """Report missed or failed improvement runs without creating the ledger."""
-    from metalm_ops.improve import store
+    from metalm_ops.improve import brake, store
 
     directory = configuration.state_dir / "improve"
-    if (directory / "PAUSE").exists() or (directory / f"paused-{repository}").exists() or not configuration.improve.enabled:
+    if (directory / "PAUSE").exists() or not configuration.improve.enabled:
         return Check("auto-improve", AMBER, "paused")
+    try:
+        entry = next((item for item in brake.read(configuration, fetch=False) if item["repo"] == repository), None)
+    except Exception as error:
+        return Check("auto-improve", RED, f"cannot read brake: {error}")
+    if entry:
+        return Check("auto-improve", AMBER, brake.reason(entry))
     runs = store.read_runs(configuration, repo=repository, limit=1)
     if not runs:
         return Check("auto-improve", AMBER, "no run yet")

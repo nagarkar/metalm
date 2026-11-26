@@ -377,10 +377,17 @@ def test_invalid_reviewer_rejects(world, answer):
     assert not world.commands("gh", "pr", "merge")
 
 
+def test_reserve_for_three_judges_stops_a_proposal_the_budget_cannot_review(world):
+    world.configure(max_review_cost_usd_per_day=0.5)
+    _, row = result(world)
+    assert row["outcome"] == "skipped" and "reserve for three judges" in row["reason"]
+    assert not world.prompts
+
+
 def test_proposer_skip_is_recorded_without_pr(world):
     world.proposal = {**PROPOSAL, "skip": True, "skip_reason": "Nothing is clear-cut."}
     _, row = result(world)
-    assert row["outcome"] == "skipped" and row["reason"] == "Nothing is clear-cut."
+    assert row["outcome"] == "skipped" and row["reason"] == "proposer found nothing: Nothing is clear-cut."
     assert not world.bodies
 
 
@@ -476,7 +483,9 @@ def test_one_repo_crash_does_not_stop_the_next(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("cap", ["codex", "review"])
 def test_daily_caps_stop_remaining_repos(tmp_path, monkeypatch, cap):
-    settings = {"max_codex_calls_per_day": 1} if cap == "codex" else {"max_review_cost_usd_per_day": 0.2}
+    settings = (
+        {"max_codex_calls_per_day": 1} if cap == "codex" else {"max_review_cost_usd_per_day": 0.8}
+    )  # one run spends 0.3; 0.3 + the 0.6 judge reserve exceeds 0.8
     world = World(tmp_path, monkeypatch, names=("alm", "blm"), **settings)
     board = run.run(world.config)
     assert board["rows"][1]["outcome"] == "skipped"
@@ -541,8 +550,9 @@ def test_review_cost_is_counted_even_when_reviewer_errors(world):
     assert store.usage(world.config)["review_cost_usd"] == pytest.approx(0.6)
 
 
-def test_review_cap_reached_between_reviewers_prevents_second_call(world):
-    # Issue #84 spends 0.1 on verification before the first reviewer.
+def test_review_cap_reached_between_reviewers_prevents_second_call(world, monkeypatch):
+    # Issue #84 spends 0.1 on verification before the first reviewer; no reserve, to reach the mid-PR cap path.
+    monkeypatch.setattr(run, "REVIEW_RESERVE_USD", 0.0)
     world.configure(max_review_cost_usd_per_day=0.15)
     _, row = result(world)
     assert row["outcome"] == "rejected"

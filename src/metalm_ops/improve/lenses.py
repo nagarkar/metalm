@@ -56,11 +56,14 @@ def applicable(selected, tracked: list[str]) -> tuple[str, ...]:
     return tuple(name for name in NAMES if (selected.lenses is None or name in selected.lenses) and (frontend or name not in {"frontend-robustness", "ui"}))
 
 
+PROPOSER_SKIP = "proposer found nothing: "  # a lens the proposer searched counts as done, so the next run moves on
+
+
 def completed(rows: list[dict]) -> dict[str, datetime]:
     """Latest non-skipped completion for each lens, including historical categories."""
     result = {}
     for row in rows:
-        if row["outcome"] == "skipped":
+        if row["outcome"] == "skipped" and not row.get("reason", "").startswith(PROPOSER_SKIP):
             continue
         name = row.get("lens") or row.get("category")
         name = OLD_NAMES.get(name, name)

@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import tomllib
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from metalm_ops.config import NAME_RE, Config, Repo
@@ -92,22 +92,47 @@ def reason(entry: dict) -> str:
     return f"braked since {entry['since']}: {entry['summary']}"
 
 
-def trigger(rows: list[dict]) -> dict | None:
-    """Find judge rejection or no-proposal streaks in newest-first history."""
+def _after(row: dict, after: str | None) -> bool:
+    if after is None:
+        return True
+
+    def moment(text: str) -> datetime:
+        value = datetime.fromisoformat(text)
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+    return moment(row["finished"]) > moment(after)
+
+
+def last_brake(config: Config, repo: str) -> str | None:
+    """When this repo's latest brake lifecycle recorded a step; older runs never count toward a new brake."""
+    times = [row["recorded"] for row in store.read_steps(config, repo)]
+    return (
+        max(
+            times,
+            key=lambda text: datetime.fromisoformat(text) if datetime.fromisoformat(text).tzinfo else datetime.fromisoformat(text).replace(tzinfo=timezone.utc),
+        )
+        if times
+        else None
+    )
+
+
+def trigger(rows: list[dict], after: str | None = None) -> dict | None:
+    """Find judge rejection or no-proposal streaks in newest-first history, counting only runs after the last brake."""
+    rows = [row for row in rows if _after(row, after)]
     judged = []
     for row in rows:
         if row["outcome"] == "merged":
             break
         detail = row.get("reason", "")
-        if (
-            row["outcome"] == "rejected"
-            and row.get("pr_url")
-            and (detail.startswith(("verifier refuted:", "verifier uncertain:")) or "reviewer rejected:" in detail)
-        ):
-            judged.append(row)
-        elif row.get("pr_url") and row["outcome"] == "rejected":
-            # A CI rejection still reached judges and interrupts their rejection streak.
+        if row["outcome"] != "rejected" or not row.get("pr_url"):
+            continue
+        if "daily cap" in detail:
+            # Closed for budget, not judged: neither counts nor breaks the streak.
+            continue
+        if detail.startswith("CI "):
+            # A CI rejection is not the judges' verdict and interrupts their rejection streak.
             break
+        judged.append(row)
         if len(judged) == 3:
             return _trigger("rejected", judged, "three consecutive PRs rejected by the judges")
     eligible = [
@@ -119,6 +144,7 @@ def trigger(rows: list[dict]) -> dict | None:
                 "daily Codex call cap",
                 "daily Claude review cost cap",
                 "slot ",
+                "system: ",
                 "braked since ",
                 "cadence:",
                 "cadence satisfied",
@@ -325,7 +351,9 @@ def apply(config: Config, repo: str | Repo, trigger: dict, run_id: str, now: dat
                 raise ImproveError("brake PR was closed without merging; owner intervention needed")
             if existing["state"] != "MERGED":
                 record("merge", "started", existing)
-                _github(metalm, "pr", "merge", existing["url"], "--merge", "--match-head-commit", existing["headRefOid"], directory=directory)
+                _github(
+                    metalm, "pr", "merge", existing["url"], "--merge", "--delete-branch", "--match-head-commit", existing["headRefOid"], directory=directory
+                )
                 record("merge", "ok", existing)
         if not result["pr_url"]:
             raise ImproveError("brake entry exists but its PR could not be found")

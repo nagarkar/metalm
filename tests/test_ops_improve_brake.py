@@ -28,9 +28,9 @@ def row(number, outcome="rejected", reason="verifier refuted: wrong", pr=True):
     }
 
 
-def trigger(rows):
+def trigger(rows, after=None):
     """Public ledger order is newest first; fixtures tell the story chronologically."""
-    return brake.trigger(list(reversed(rows)))
+    return brake.trigger(list(reversed(rows)), after)
 
 
 def test_three_judge_rejections_trigger_but_merge_resets():
@@ -283,3 +283,27 @@ def test_invalid_tracked_brake_fields_are_rejected(world, replacement):
     git(world.metalm, "push", "origin", "main")
     with pytest.raises(ImproveError, match="improve/braked.toml"):
         brake.read(world.config)
+
+
+def test_budget_closures_neither_count_nor_break_the_judge_streak():
+    cap = row(2, reason="senior engineer reviewer rejected: daily cap reached (Claude review cost)")
+    assert trigger([row(1), cap, row(3), row(4)])["reason"] == "rejected"
+    assert trigger([row(1), cap, row(3)]) is None
+
+
+def test_low_confidence_and_unclear_closures_are_judge_rejections():
+    low = row(2, reason="senior engineer reviewer confidence 0.6 is below 0.8")
+    unclear = row(3, reason="boundaries reviewer did not find a clear-cut improvement")
+    assert trigger([row(1), low, unclear])["reason"] == "rejected"
+
+
+def test_runs_before_the_last_brake_never_count_again():
+    failures = [row(i, "gate-failed", "evidence quote not found", False) for i in range(1, 6)]
+    after = failures[1]["finished"]
+    assert trigger(failures) is not None
+    assert trigger(failures, after) is None
+
+
+def test_system_outages_do_not_stall_a_repo():
+    outages = [row(i, "failed", "system: could not read metalm's brake list: offline", False) for i in range(1, 6)]
+    assert trigger(outages) is None

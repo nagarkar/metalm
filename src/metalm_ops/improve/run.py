@@ -131,6 +131,9 @@ def _lock(config: Config) -> Iterator[None]:
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
+REVIEW_RESERVE_USD = 0.60  # three judge calls at the observed ~$0.15-0.20 each
+
+
 def _cap(config: Config, *, reviews_only: bool = False) -> str:
     settings = config.improve
     if settings is None:
@@ -140,6 +143,9 @@ def _cap(config: Config, *, reviews_only: bool = False) -> str:
         return "daily cap reached (Codex calls)"
     if usage["review_cost_usd"] >= settings.max_review_cost_usd_per_day:
         return "daily cap reached (Claude review cost)"
+    if not reviews_only and usage["review_cost_usd"] + REVIEW_RESERVE_USD > settings.max_review_cost_usd_per_day:
+        # Start a proposal only when the budget covers all three judges, so no PR is closed for lack of budget.
+        return "daily cap reached (Claude review cost, reserve for three judges)"
     return ""
 
 
@@ -188,12 +194,12 @@ def _history(repository: Repo, directory: Path) -> str:
     return json.dumps(history, ensure_ascii=False)
 
 
-def labels(config: Config, *, repo: str | None = None, dry_run: bool = False) -> dict:
-    """Create or update the six attribution and review labels in opted-in repos."""
+def labels(config: Config, *, repo: str | None = None, dry_run: bool = False, include_metalm: bool = True) -> dict:
+    """Create or update the six attribution and review labels in opted-in repos (and metalm, for brake PRs)."""
     rows = []
     repositories = [repository for _, repository in _selected(config, repo)]
     metalm = brake.repository(config)
-    if all(repository.github != metalm.github for repository in repositories):
+    if include_metalm and all(repository.github != metalm.github for repository in repositories):
         repositories.append(metalm)
     for repository in repositories:
         if dry_run:
@@ -214,7 +220,11 @@ def status(config: Config, *, repo: str | None = None, now: datetime | None = No
         return {"opted_in": False}
     now = now or NOW()
     repositories, rows = [], []
-    entries = {entry["repo"]: entry for entry in brake.read(config)} if config.improve else {}
+    brake_error = ""
+    try:
+        entries = {entry["repo"]: entry for entry in brake.read(config)} if config.improve else {}
+    except Exception as error:  # offline: still answer the session-start check with JSON
+        entries, brake_error = {}, f"could not read improve/braked.toml: {error}"
     for selected, repository in _selected(config, repo):
         history = store.read_runs(config, selected.name, limit=1000000)
         recent = history[:10]
@@ -236,7 +246,8 @@ def status(config: Config, *, repo: str | None = None, now: datetime | None = No
         "repos": repositories,
         "rows": rows,
         "usage": store.usage(config),
-        "ok": not any(item.get("error") for item in repositories),
+        "ok": not brake_error and not any(item.get("error") for item in repositories),
+        "brake_error": brake_error,
         "next": "metalm-ops improve run --dry-run",
     }
     if repo is not None:
@@ -431,7 +442,7 @@ def _run_repo(
             config, run_id=run_id, repo=repository.name, role="propose", worktree=worktree, directory=directory, prompt=prompt, template=template
         )
         if proposal["skip"]:
-            row.update(outcome="skipped", reason=proposal["skip_reason"])
+            row.update(outcome="skipped", reason=lenses.PROPOSER_SKIP + proposal["skip_reason"])
             return row
         if proposal["lens"] != chosen or proposal["category"] != chosen:
             raise gates.GateError(f"proposal must use selected lens {chosen}")
@@ -475,9 +486,9 @@ def _run_repo(
             raise gates.GateError("pre-commit left uncommitted changes")
         head = _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip()
         _command(["git", "push", "-u", "origin", branch], cwd=worktree, directory=directory)
-        label_result = labels(config, repo=repository.name)
+        label_result = labels(config, repo=repository.name, include_metalm=False)
         if not label_result["ok"]:
-            raise ImproveError(label_result["rows"][0]["reason"])
+            raise ImproveError(next(row["reason"] for row in label_result["rows"] if not row["ok"]))
         body = _body(config, run_id, proposal, measured, repository, base)
         body_file = directory / "pr-body.md"
         body_file.write_text(body)
@@ -669,7 +680,7 @@ def _pass(config: Config, selected: list, run_id: str, now: datetime, repo: str 
     except Exception as error:
         if dry_run:
             return [{"repo": repository.name, "outcome": "failed", "reason": str(error)} for _, repository in selected]
-        return [_outcome(config, run_id, repository.name, now, "failed", str(error)) for _, repository in selected]
+        return [_outcome(config, run_id, repository.name, now, "failed", f"system: could not read metalm's brake list: {error}") for _, repository in selected]
     plans = []
     for entry, repository in selected:
         try:
@@ -708,13 +719,17 @@ def _pass(config: Config, selected: list, run_id: str, now: datetime, repo: str 
                     },
                 )
             )
+    if len(plans) > 1 and all(board.get("error") for _, _, board in plans):
+        # Every repo failed to plan: a shared outage (network, gh auth), not something to brake each repo for.
+        for _, _, board in plans:
+            board["reason"] = "system: " + board["reason"]
     plans.sort(key=lambda item: cadence.order(item[2]))
     rows = []
     for entry, repository, board in plans:
         failure = board.get("error", False)
         reason = board["reason"] if failure else ""
         braked = entries.get(repository.name)
-        trigger = brake.trigger(store.read_runs(config, repository.name, limit=1000000)) if not disabled else None
+        trigger = brake.trigger(store.read_runs(config, repository.name, limit=1000000), brake.last_brake(config, repository.name)) if not disabled else None
         brake_failure = ""
         attempted_brake = False
         if trigger and not dry_run and not no_pr:
@@ -758,7 +773,7 @@ def _pass(config: Config, selected: list, run_id: str, now: datetime, repo: str 
             row = _outcome(config, run_id, repository.name, now, "failed" if failure else "skipped", reason, board["lens"])
         else:
             row = _run_repo(config, entry, repository, run_id, no_pr, board["lens"], now)
-        trigger = brake.trigger(store.read_runs(config, repository.name, limit=1000000))
+        trigger = brake.trigger(store.read_runs(config, repository.name, limit=1000000), brake.last_brake(config, repository.name))
         if trigger and not no_pr and not disabled and not attempted_brake:
             try:
                 result = brake.apply(config, repository.name, trigger, run_id, now)

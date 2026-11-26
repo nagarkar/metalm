@@ -5,7 +5,7 @@ only edit a proposal or judge a diff. Configuration opts repositories in.
 
 Decisions:
 - A dry run calls no agent and writes nothing; `--no-pr` rehearses the proposal and gates without publishing. (owner)
-- Codex proposes; two independent Claude calls review; both must approve clearly with confidence at least 0.8, and checks must pass, before Python merges. (owner)
+- Codex proposes; a Claude verifier must confirm the quoted claim, then two independent Claude calls review; both must approve clearly with confidence at least 0.8, and checks must pass, before Python merges. (owner)
 - The system never updates a live checkout unless it is clean and on main. (owner)
 
 Terms:

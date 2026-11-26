@@ -116,7 +116,10 @@ def read_runs(config: Config, repo: str | None = None, limit: int = 7) -> list[d
             parameters.append(repo)
         query += " ORDER BY finished DESC, rowid DESC LIMIT ?"
         parameters.append(limit)
-        return [dict(row) for row in connection.execute(query, parameters)]
+        rows = [dict(row) for row in connection.execute(query, parameters)]
+        from metalm_ops.improve.lenses import OLD_NAMES
+
+        return [{**row, "lens": OLD_NAMES.get(row["category"], row["category"])} for row in rows]
 
 
 def usage(config: Config) -> dict:

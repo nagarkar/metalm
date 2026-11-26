@@ -14,7 +14,7 @@ Rules that span modules, from each package's `Decisions:`. Owner rules end with 
 - `metalm_ops`: The dashboard is a served app like the others: its loopback and tailnet ports are one row in the served-apps table in the owner's global `~/.claude/CLAUDE.md`, and `port` in ops.toml repeats the loopback one; no port is written in git. (owner)
 - `metalm_ops`: Which databases, apps and agents exist is one central gitignored file in metalm (`ops.toml`), never a manifest in each repo, so no tracked file says what databases exist. (owner)
 - `metalm_ops.improve`: A dry run calls no agent and writes nothing; `--no-pr` rehearses the proposal and gates without publishing. (owner)
-- `metalm_ops.improve`: Codex proposes; two independent Claude calls review; both must approve clearly with confidence at least 0.8, and checks must pass, before Python merges. (owner)
+- `metalm_ops.improve`: Codex proposes; a Claude verifier must confirm the quoted claim, then two independent Claude calls review; both must approve clearly with confidence at least 0.8, and checks must pass, before Python merges. (owner)
 - `metalm_ops.improve`: The system never updates a live checkout unless it is clean and on main. (owner)
 
 ## Agent-drafted

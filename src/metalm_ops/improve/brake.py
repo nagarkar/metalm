@@ -11,6 +11,7 @@ from pathlib import Path
 
 from metalm_ops.config import NAME_RE, Config, Repo
 from metalm_ops.improve import process, store
+from metalm_ops.improve.lenses import PROPOSER_SKIP
 from metalm_ops.schedule import CHECKOUT
 
 
@@ -157,8 +158,12 @@ def trigger(rows: list[dict], after: str | None = None) -> dict | None:
         )
     ]
     recent = eligible[:5]
-    if len(recent) == 5 and all(not row.get("pr_url") and row["outcome"] in {"skipped", "gate-failed", "failed", "error"} for row in recent):
-        return _trigger("stalled", recent, "five consecutive runs ended without a PR")
+    # A proposer that searched and found nothing is the system working, not stalling: it breaks the streak.
+    if len(recent) == 5 and all(
+        not row.get("pr_url") and row["outcome"] in {"skipped", "gate-failed", "failed", "error"} and not row.get("reason", "").startswith(PROPOSER_SKIP)
+        for row in recent
+    ):
+        return _trigger("stalled", recent, "five consecutive runs failed without a PR")
     return None
 
 
@@ -200,7 +205,11 @@ def _body(config: Config, repo: str, event: dict, run_id: str) -> str:
     from metalm_ops.improve.run import opening
 
     details = "\n".join(
-        f"- [{row['run_id']}]({row.get('pr_url') or (config.state_dir / 'improve' / 'runs' / row['run_id'] / repo).as_uri()}): {row['reason']}"
+        (
+            f"- [{row['run_id']}]({row['pr_url']}): {row['reason']}"
+            if row.get("pr_url")
+            else f"- run `{row['run_id']}` (ledger on the owner's Mac): {row['reason']}"
+        )
         for row in event.get("rows", [])
     )
     return (

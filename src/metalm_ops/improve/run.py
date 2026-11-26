@@ -635,7 +635,7 @@ def _run_repo(
                     _command(["git", "-C", str(repository.path), "branch", "-D", branch], directory=directory)
         except Exception as error:
             row.update(outcome="failed", reason=f"{row['reason']}; branch cleanup failed: {error}")
-        row["finished"] = (now or NOW()).isoformat()
+        row["finished"] = NOW().isoformat()  # when the run ended, not when the pass began
         try:
             (directory / "result.json").write_text(json.dumps(row, indent=2))
         except OSError as error:

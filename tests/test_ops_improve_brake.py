@@ -307,3 +307,10 @@ def test_runs_before_the_last_brake_never_count_again():
 def test_system_outages_do_not_stall_a_repo():
     outages = [row(i, "failed", "system: could not read metalm's brake list: offline", False) for i in range(1, 6)]
     assert trigger(outages) is None
+
+
+def test_runs_where_the_proposer_found_nothing_never_stall_a_repo():
+    empty = [row(i, "skipped", "proposer found nothing: no clear-cut change", False) for i in range(1, 6)]
+    assert trigger(empty) is None
+    failures = [row(i, "gate-failed", "tests failed", False) for i in range(1, 6)]
+    assert trigger([*failures[:4], empty[0] | {"run_id": "r9", "finished": "2026-11-29T13:11:00+00:00"}]) is None

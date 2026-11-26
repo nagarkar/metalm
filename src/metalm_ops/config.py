@@ -61,6 +61,7 @@ class ImproveRepo:
     merge: str = "merge"
     exclude: tuple[str, ...] = ()
     deploy: str = ""
+    lenses: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +136,7 @@ KNOWN["improve"] = {
     "max_changed_lines": int,
     "repo": list,
 }
-KNOWN["improve.repo"] = {"name": str, "test": str, "merge": str, "exclude": list, "deploy": str}
+KNOWN["improve.repo"] = {"name": str, "test": str, "merge": str, "exclude": list, "deploy": str, "lenses": list}
 TABLES = {"backup", "improve"}
 ARRAYS = {"database", "repo"}
 
@@ -260,7 +261,14 @@ def _improve(data: dict, repositories: list[Repo]) -> Improve | None:
             row["test"].format(venv="venv", worktree="worktree")
         except (KeyError, ValueError, IndexError, AttributeError) as error:
             raise ConfigError(f"{location}.test: use only {{venv}} and {{worktree}} placeholders") from error
-        selected.append(ImproveRepo(**{**row, "exclude": tuple(excluded)}))
+        from metalm_ops.improve.lenses import NAMES
+
+        chosen = row.get("lenses")
+        if chosen is not None and any(not isinstance(name, str) or name not in NAMES for name in chosen):
+            raise ConfigError(f"{location}.lenses: unknown lens; expected {', '.join(NAMES)}")
+        if chosen is not None and len(set(chosen)) != len(chosen):
+            raise ConfigError(f"{location}.lenses: duplicate lens")
+        selected.append(ImproveRepo(**{**row, "exclude": tuple(excluded), "lenses": tuple(chosen) if chosen is not None else None}))
     return Improve(**{key: value for key, value in settings.items() if key != "repo"}, repos=tuple(selected))
 
 

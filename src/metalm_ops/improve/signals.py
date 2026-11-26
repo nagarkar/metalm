@@ -18,6 +18,7 @@ import fnmatch
 import hashlib
 import io
 import json
+import keyword
 import re
 import tokenize
 import xml.etree.ElementTree as ElementTree
@@ -39,25 +40,60 @@ THRESHOLDS = {
     "slow_suite_seconds": 60.0,  # above this, the five slowest tests are findings too
     "churn_days": 14,
     "churn_files": 5,  # the busiest files by recently changed lines
+    "class_methods": 20,  # a class with more methods usually has several responsibilities
+    "class_lines": 300,
+    "renamed_lines": 10,  # consecutive lines that match once names and literals are ignored
 }
 SIGNALS = ("churn", "size", "complexity", "coupling", "duplication", "security", "docs", "untested", "slow-tests")
 LENSES = {
     "churn": ("readability", "backend-robustness", "tests", "documentation", "drift"),
-    "size": ("readability",),
-    "complexity": ("readability",),
-    "coupling": ("readability",),
+    "size": ("modularity",),
+    "complexity": ("modularity",),
+    "coupling": ("modularity",),
+    "class-size": ("modularity",),
+    "long-params": ("modularity",),
+    "encapsulation": ("modularity",),
     "duplication": ("duplication",),
     "security": ("backend-robustness",),
     "docs": ("documentation",),
     "untested": ("tests",),
     "slow-tests": ("performance",),
+    "perf": ("performance",),
+    "io-in-loop": ("performance",),
     "frontend-churn": ("frontend-robustness", "ui"),
 }
+# How much fixing a finding is worth, per signal, before its distance over threshold; picks the lens.
+WEIGHT = {
+    "security": 3.0,
+    "io-in-loop": 2.5,
+    "coupling": 2.5,
+    "duplication": 2.0,
+    "encapsulation": 1.8,
+    "class-size": 1.6,
+    "complexity": 1.5,
+    "size": 1.4,
+    "slow-tests": 1.3,
+    "perf": 1.2,
+    "long-params": 1.0,
+    "untested": 1.0,
+    "docs": 0.5,
+    "churn": 0.4,
+    "frontend-churn": 0.4,
+}
 FRONTEND = ("*.html", "*.js", "*.jsx", "*.ts", "*.tsx", "*.vue", "*.svelte", "*.css")
-STEP_OF = {"complexity": "ruff", "security": "ruff", "docs": "ruff", "frontend-churn": "churn"}
+STEP_OF = {
+    "complexity": "ruff",
+    "security": "ruff",
+    "docs": "ruff",
+    "long-params": "ruff",
+    "perf": "ruff",
+    "frontend-churn": "churn",
+    "class-size": "design",
+    "encapsulation": "design",
+}
 SLOW_TEST_GAIN = 0.8  # a slow test must get at least 20% faster; smaller differences are timing noise
-# PLR0913 (too many arguments) is left out: fixing it changes signatures, which is not a small safe change.
-RUFF_SELECT = "C901,PLR0911,PLR0912,PLR0915,S,D100,D101,D103,D104"
+# PLR0913 feeds the modularity lens (group a travelling parameter set); PERF101/102/203 are static performance smells.
+RUFF_SELECT = "C901,PLR0911,PLR0912,PLR0913,PLR0915,PERF101,PERF102,PERF203,S,D100,D101,D103,D104"
 # Security codes that flag ordinary tooling (asserts, subprocess with fixed arguments, random), not risk.
 RUFF_IGNORE = "S101,S311,S404,S603,S607"
 SKIPPED_PARTS = {"tests", "test", "docs", ".venv", "venv", "node_modules", "migrations", "generated", "build", "dist"}
@@ -228,7 +264,13 @@ def ruff(root: Path, sources: list[str], ruff_bin: Path, limits: dict, parsed: d
         name = re.search(r"`([^`]+)`", message)
         where = name.group(1) if name and code.startswith("C9") else _enclosing(tree, start)
         symbol = f"{code}:{where}"
-        if code.startswith(("C9", "PLR")):
+        if code == "PLR0913":
+            numbers = re.search(r"\((\d+) > (\d+)\)", message)
+            value, limit = (int(numbers.group(1)), int(numbers.group(2))) if numbers else (1, 0)
+            found.append(finding("long-params", path, start, end, code, value, limit, message, symbol))
+        elif code.startswith("PERF"):
+            found.append(finding("perf", path, start, end, code, 1, 0, message, symbol))
+        elif code.startswith(("C9", "PLR")):
             numbers = re.search(r"\((\d+) > (\d+)\)", message)
             value, limit = (int(numbers.group(1)), int(numbers.group(2))) if numbers else (1, 0)
             found.append(finding("complexity", path, start, end, code, value, limit, message, symbol))
@@ -533,6 +575,251 @@ def churn(root: Path, sources: list[str], now: datetime, limits: dict, excludes:
     return found
 
 
+IO_CALLS = {
+    "execute",
+    "executemany",
+    "executescript",
+    "fetchone",
+    "fetchall",
+    "fetchmany",
+    "urlopen",
+    "connect",
+}  # per-item work one batched call usually replaces; reading a list of files one by one is not flagged
+IO_MODULES = {"subprocess", "requests", "httpx", "urllib", "sqlite3", "time"}  # subprocess.run, requests.get, time.sleep ...
+
+
+def _call_name(node: ast.Call) -> str:
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        owner = func.value.id if isinstance(func.value, ast.Name) else ""
+        return f"{owner}.{func.attr}" if owner in IO_MODULES else func.attr
+    return func.id if isinstance(func, ast.Name) else ""
+
+
+def _loop_calls(loop: ast.AST):
+    """Calls inside a loop's body, not inside nested functions or classes defined there."""
+    stack = list(loop.body) + list(getattr(loop, "orelse", []))
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(node, ast.Call):
+            yield node
+        stack.extend(ast.iter_child_nodes(node))
+
+
+def performance(sources: list[str], parsed: dict) -> list[dict]:
+    """I/O per item: a query, request, subprocess, file read or sleep inside a loop (an N+1 or a hot-path wait)."""
+    found = []
+    for path in sources:
+        tree = parsed[path][1]
+        if tree is None:
+            continue
+        for loop in ast.walk(tree):
+            if not isinstance(loop, (ast.For, ast.AsyncFor, ast.While)):
+                continue
+            for call in _loop_calls(loop):
+                name = _call_name(call)
+                if name in IO_CALLS or name.split(".")[0] in IO_MODULES:
+                    where = _enclosing(tree, loop.lineno)
+                    found.append(
+                        finding(
+                            "io-in-loop",
+                            path,
+                            loop.lineno,
+                            loop.end_lineno or loop.lineno,
+                            "calls per item",
+                            1,
+                            0,
+                            f"{name}() runs once per iteration of the loop at line {loop.lineno} in {where}",
+                            f"{where}:{name}",
+                        )
+                    )
+    return found
+
+
+def design(sources: list[str], parsed: dict, limits: dict) -> list[dict]:
+    """Encapsulation and class-size findings: reaching into another module's private names, module state
+    changed through `global`, and classes with too many methods or lines."""
+    modules = {module_name(path): path for path in sources}
+    found = []
+    for path in sources:
+        tree = parsed[path][1]
+        if tree is None:
+            continue
+        aliases = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if _resolve(alias.name, modules):
+                        aliases[alias.asname or alias.name.split(".")[0]] = alias.name
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                for alias in node.names:
+                    if f"{node.module}.{alias.name}" in modules:
+                        aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+                    elif alias.name.startswith("_") and not alias.name.startswith("__") and _resolve(node.module, modules):
+                        found.append(
+                            finding(
+                                "encapsulation",
+                                path,
+                                node.lineno,
+                                node.lineno,
+                                "private imports",
+                                1,
+                                0,
+                                f"imports private {alias.name} from {node.module}",
+                                f"private:{node.module}.{alias.name}",
+                            )
+                        )
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id in aliases
+                and node.attr.startswith("_")
+                and not node.attr.startswith("__")
+            ):
+                found.append(
+                    finding(
+                        "encapsulation",
+                        path,
+                        node.lineno,
+                        node.lineno,
+                        "private accesses",
+                        1,
+                        0,
+                        f"reaches into {aliases[node.value.id]}.{node.attr}",
+                        f"private:{aliases[node.value.id]}.{node.attr}",
+                    )
+                )
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                names = sorted({name for statement in ast.walk(node) if isinstance(statement, ast.Global) for name in statement.names})
+                if names:
+                    found.append(
+                        finding(
+                            "encapsulation",
+                            path,
+                            node.lineno,
+                            node.end_lineno or node.lineno,
+                            "global writes",
+                            len(names),
+                            0,
+                            f"{node.name} changes module state through global {', '.join(names)}",
+                            f"global:{node.name}",
+                        )
+                    )
+            elif isinstance(node, ast.ClassDef):
+                methods = sum(isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) for item in node.body)
+                lines = (node.end_lineno or node.lineno) - node.lineno + 1
+                if methods > limits["class_methods"]:
+                    found.append(
+                        finding(
+                            "class-size",
+                            path,
+                            node.lineno,
+                            node.end_lineno or node.lineno,
+                            "methods",
+                            methods,
+                            limits["class_methods"],
+                            f"class {node.name} has {methods} methods",
+                            f"methods:{node.name}",
+                        )
+                    )
+                elif lines > limits["class_lines"]:
+                    found.append(
+                        finding(
+                            "class-size",
+                            path,
+                            node.lineno,
+                            node.end_lineno or node.lineno,
+                            "class lines",
+                            lines,
+                            limits["class_lines"],
+                            f"class {node.name} has {lines} lines",
+                            f"lines:{node.name}",
+                        )
+                    )
+    return found
+
+
+def _shape(text: str) -> list[tuple[int, str]]:
+    """(line, tokens) with every name, number and string replaced: copies that only rename still match.
+    Imports, decorators and bare assignments/returns are dropped; they match everywhere."""
+    lines: dict[int, list[str]] = defaultdict(list)
+    skip = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENCODING, tokenize.ENDMARKER}
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            if token.type in skip:
+                continue
+            if token.type == tokenize.NAME and not keyword.iskeyword(token.string):
+                lines[token.start[0]].append("n")
+            elif token.type == tokenize.NUMBER:
+                lines[token.start[0]].append("0")
+            elif token.type == tokenize.STRING or token.type == getattr(tokenize, "FSTRING_START", -1):
+                lines[token.start[0]].append("s")
+            elif token.type in {getattr(tokenize, "FSTRING_MIDDLE", -1), getattr(tokenize, "FSTRING_END", -1)}:
+                continue
+            else:
+                lines[token.start[0]].append(token.string)
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return []
+    trivial = {"n = n", "n = s", "n = 0", "return n", "import n", "pass", "n ,", ")", "]", "}", "n = n . n", "return n . n"}
+    shaped = []
+    for number, tokens in sorted(lines.items()):
+        text_line = " ".join(tokens)
+        if text_line in trivial or text_line.startswith(("import ", "from ", "@")) or len(tokens) < 4:
+            continue
+        shaped.append((number, text_line))
+    return shaped
+
+
+def renamed_duplication(sources: list[str], parsed: dict, limits: dict) -> list[dict]:
+    """Blocks that match once names and literals are ignored: the copy-paste-and-rename kind of duplication."""
+    width = limits["renamed_lines"]
+    shaped = {path: _shape(parsed[path][0]) for path in sources}
+    windows: dict[str, list[tuple[str, int]]] = defaultdict(list)
+    for path, lines in shaped.items():
+        for start in range(len(lines) - width + 1):
+            block = [text for _, text in lines[start : start + width]]
+            if len(set(block)) < width // 2:  # a block of near-identical lines (a table, a run of calls) is not logic
+                continue
+            windows[hashlib.sha1("\n".join(block).encode()).hexdigest()].append((path, start))
+    best: dict[tuple[str, str], dict] = {}
+    for key, places in windows.items():
+        for first in range(len(places)):
+            for second in range(first + 1, len(places)):
+                (path_a, a), (path_b, b) = places[first], places[second]
+                if path_a == path_b and abs(a - b) < width:
+                    continue
+                pair = (path_a, path_b)
+                if pair in best:
+                    best[pair]["windows"] += 1
+                    continue
+                lines_a, lines_b = shaped[path_a], shaped[path_b]
+                best[pair] = {"windows": 1, "a": (lines_a[a][0], lines_a[a + width - 1][0]), "b": (lines_b[b][0], lines_b[b + width - 1][0]), "key": key[:12]}
+    found = []
+    for (path_a, path_b), item in best.items():
+        span = item["windows"] + width - 1
+        (start_a, end_a), (start_b, end_b) = item["a"], item["b"]
+        found.append(
+            finding(
+                "duplication",
+                path_a,
+                start_a,
+                max(end_a, start_a),
+                "renamed copy lines",
+                span,
+                width,
+                f"about {span} lines repeat, with renamed names, at {path_b}:{start_b}",
+                f"renamed:{path_b}:{_enclosing(parsed[path_a][1], start_a)}",
+                related=[path_b],
+                other={"path": path_b, "start_line": start_b, "end_line": max(end_b, start_b)},
+            )
+        )
+    found.sort(key=lambda entry: (-entry["value"], entry["path"]))
+    return found[:20]
+
+
 def measure(
     root: Path, *, ruff_bin: Path, excludes: tuple[str, ...] = (), thresholds: dict | None = None, junit: Path | None = None, now: datetime | None = None
 ) -> dict:
@@ -548,7 +835,9 @@ def measure(
         "size": lambda: size(root, sources, limits, parsed),
         "ruff": lambda: ruff(root, sources, ruff_bin, limits, parsed),
         "coupling": lambda: coupling(sources, parsed, limits),
-        "duplication": lambda: duplication(sources, parsed, limits),
+        "duplication": lambda: duplication(sources, parsed, limits) + renamed_duplication(sources, parsed, limits),
+        "design": lambda: design(sources, parsed, limits),
+        "performance": lambda: performance(sources, parsed),
         "untested": lambda: untested(sources, parsed, coverage, limits),
         "slow-tests": lambda: slow_tests(root, junit, limits),
     }
@@ -603,6 +892,28 @@ def candidates(report: dict, lens: str, *, avoid: set[str] = frozenset(), seed: 
 
     # Measured findings in recently changed files first; a bare "this file was busy" finding only when nothing measured fits.
     return sorted(pool, key=lambda item: (item["signal"] == "churn", item["path"] not in churned, -excess(item), _shuffle(seed, item["fingerprint"])))
+
+
+def severity(item: dict, churned: set[str]) -> float:
+    """Worth of fixing a finding: the signal's weight, scaled by how far over threshold, doubled-ish for busy files."""
+    over = item["value"] / item["threshold"] if item["threshold"] else 1.0
+    return WEIGHT.get(item["signal"], 1.0) * min(over, 4.0) * (1.5 if item["path"] in churned else 1.0)
+
+
+def pick(report: dict, available: tuple[str, ...], latest: dict, now: datetime, *, avoid: set[str] = frozenset(), seed: str = ""):
+    """(lens, its candidates, overdue lenses with nothing measured). Overdue lenses keep the weekly floor;
+    among them, and otherwise among all lenses, the one whose best finding is worth most wins."""
+    churned = set(report.get("churned", []))
+    floor = datetime.min.replace(tzinfo=timezone.utc)
+    pools = {name: candidates(report, name, avoid=avoid, seed=seed) for name in available}
+    overdue = [name for name in available if name not in latest or now - latest[name] >= timedelta(days=7)]
+    empty = [name for name in overdue if not pools[name]]
+    for group in ([name for name in overdue if pools[name]], [name for name in available if pools[name]]):
+        if group:
+            chosen = max(group, key=lambda name: (severity(pools[name][0], churned), -available.index(name)))
+            return chosen, pools[chosen], empty
+    oldest = min(available, key=lambda name: (latest.get(name, floor), available.index(name)), default=None)
+    return oldest, [], [name for name in empty if name != oldest]
 
 
 def target_files(report: dict, item: dict) -> list[str]:

@@ -75,16 +75,17 @@ def test_quote_check_uses_base_not_the_proposers_edited_worktree(world):
     assert not world.bodies and not world.verify_count
 
 
-@pytest.mark.parametrize("measurement, outcome", [("", "gate-failed"), ("bench: before 20 queries; after 1 query", "merged")])
-def test_performance_requires_measurement_before_pr(world, measurement, outcome):
-    proposed(world, "performance", measurement=measurement)
+@pytest.mark.parametrize("resolved, outcome", [(True, "merged"), (False, "gate-failed")])
+def test_performance_is_re_measured_by_the_system_not_claimed_by_codex(world, resolved, outcome):
+    proposed(world, "performance", measurement="")
+    if not resolved:
+        world.after_report = world.report
     row = execute(world, "performance")
     assert row["outcome"] == outcome
-    if not measurement:
-        assert row["reason"] == "performance lens needs a before/after measurement"
-        assert not world.bodies
+    if resolved:
+        assert "## Finding" in world.bodies[0]
     else:
-        assert "## Measurement" in world.bodies[0] and measurement in world.bodies[0]
+        assert row["reason"].startswith("finding not improved")
 
 
 @pytest.mark.parametrize("verdict", ["refuted", "uncertain"])
@@ -362,3 +363,27 @@ def test_configuration_accepts_threshold_overrides(world):
     world.data["improve"]["repo"][0]["thresholds"] = {"size_lines": 600, "slow_test_seconds": 1.5}
     world.configure()
     assert world.config.improve.repos[0].thresholds == {"size_lines": 600, "slow_test_seconds": 1.5}
+
+
+def test_failed_runs_do_not_count_as_a_lens_done():
+    from metalm_ops.improve import lenses
+
+    rows = [
+        {"outcome": "failed", "reason": "system: Codex usage limit", "lens": "readability", "finished": "2026-11-26T09:41:00+00:00"},
+        {
+            "outcome": "skipped",
+            "reason": "proposer found nothing: no measured finding for documentation",
+            "lens": "documentation",
+            "finished": "2026-11-26T09:41:00+00:00",
+        },
+        {"outcome": "skipped", "reason": "daily cap reached", "lens": "tests", "finished": "2026-11-26T09:41:00+00:00"},
+    ]
+    assert set(lenses.completed(rows)) == {"documentation"}
+
+
+def test_the_modularity_lens_allows_a_larger_change():
+    from metalm_ops.improve import lenses
+
+    lens = lenses.load("modularity")
+    assert (lens.max_files, lens.max_changed_lines) == (6, 300) and not lens.may_change_behaviour
+    assert lenses.load("performance").needs_measurement is False  # the system re-measures

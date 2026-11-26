@@ -17,6 +17,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Iterator
@@ -250,8 +251,27 @@ def labels(config: Config, *, repo: str | None = None, dry_run: bool = False, in
     return {"rows": rows, "ok": all(row["ok"] for row in rows), "next": "metalm-ops doctor"}
 
 
-def signals_board(config: Config, *, repo: str | None = None, now: datetime | None = None) -> dict:
-    """Measure each opted-in repo at origin/main in a throwaway worktree; never calls a model."""
+def _time_tests(config: Config, selected: ImproveRepo, repository: Repo, folder: Path) -> str:
+    """Run the repo's suite once in the throwaway worktree with per-test timings, for the slow-tests
+    signal; keeps the junit only from a green run. Deterministic: no model."""
+    _link_venv(repository, folder, None)
+    _link_node_modules(repository, folder)
+    _link_env(repository, folder)
+    junit = folder.parent / f"{folder.name}.junit.xml"
+    environment = {**os.environ, "PYTHONPATH": str(folder / "src"), "PYTEST_ADDOPTS": f"--junitxml={junit}"}
+    result = process.run(["/bin/sh", "-c", gates.command(selected, repository, folder)], cwd=folder, env=environment, timeout=3600)
+    if result.returncode or not junit.exists():
+        return f"suite failed (exit {result.returncode}); no timings kept"
+    destination = _junit(config, repository.name)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(junit.read_bytes())
+    junit.unlink()
+    return "timings saved"
+
+
+def signals_board(config: Config, *, repo: str | None = None, now: datetime | None = None, timings: bool = False) -> dict:
+    """Measure each opted-in repo at origin/main in a throwaway worktree; never calls a model.
+    With timings, first run each suite once so the slow-tests signal has data."""
     now = now or NOW()
     repositories = []
     for selected, repository in _selected(config, repo):
@@ -262,6 +282,8 @@ def signals_board(config: Config, *, repo: str | None = None, now: datetime | No
             folder.parent.mkdir(parents=True, exist_ok=True)
             _command(["git", "-C", str(repository.path), "worktree", "add", "--detach", str(folder), "origin/main"])
             try:
+                if timings:
+                    entry["timings"] = _time_tests(config, selected, repository, folder)
                 report = signals.measure(
                     folder,
                     ruff_bin=RUFF_BIN,
@@ -654,19 +676,34 @@ def _run_repo(
         _link_venv(repository, worktree, directory)
         _link_node_modules(repository, worktree)
         available = lenses.applicable(selected, _command(["git", "ls-files", "-z"], cwd=worktree, directory=directory).split("\0"))
-        chosen = forced_lens or lenses.choose(available, store.read_runs(config, repository.name, limit=1000000))
-        if chosen not in available:
-            row.update(outcome="skipped", reason="no applicable lens" if chosen is None else f"lens {chosen} is not applicable")
+        if forced_lens is not None and forced_lens not in available:
+            row.update(outcome="skipped", reason=f"lens {forced_lens} is not applicable")
             return row
-        mission = lenses.load(chosen)
-        row.update(category=chosen, lens=chosen)
         base = _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip()
         excludes = (*gates.EXCLUDES, *selected.exclude)
         report = signals.measure(
             worktree, ruff_bin=RUFF_BIN, excludes=excludes, thresholds=selected.thresholds, junit=_junit(config, repository.name), now=started
         )
         (directory / "signals.json").write_text(json.dumps(report, indent=2, default=str))
-        picked = signals.candidates(report, chosen, avoid=recent_targets(config, repository.name, started), seed=f"{repository.name}|{started:%Y-%m-%d}")
+        avoid = recent_targets(config, repository.name, started)
+        seed = f"{repository.name}|{started:%Y-%m-%d}"
+        if forced_lens is not None:
+            chosen, picked, empty = forced_lens, signals.candidates(report, forced_lens, avoid=avoid, seed=seed), []
+        else:
+            latest = lenses.completed(store.read_runs(config, repository.name, limit=1000000))
+            chosen, picked, empty = signals.pick(report, available, latest, started, avoid=avoid, seed=seed)
+        for name in empty:
+            # An overdue lens with nothing measured is done for the week without a Codex call.
+            _outcome(config, f"{run_id}-{name}", repository.name, started, "skipped", lenses.PROPOSER_SKIP + f"no measured finding for {name}", name)
+        if chosen is None:
+            row.update(outcome="skipped", reason="no applicable lens")
+            return row
+        mission = lenses.load(chosen)
+        # A lens may allow a larger change (modularity restructures across a few files).
+        settings = replace(
+            settings, max_files=mission.max_files or settings.max_files, max_changed_lines=mission.max_changed_lines or settings.max_changed_lines
+        )
+        row.update(category=chosen, lens=chosen)
         if not picked:
             # Nothing measured for this lens: done for the weekly floor, and no Codex call spent looking.
             row.update(outcome="skipped", reason=lenses.PROPOSER_SKIP + f"no measured finding for {chosen}")

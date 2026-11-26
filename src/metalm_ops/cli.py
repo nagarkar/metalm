@@ -90,6 +90,8 @@ def build_parser() -> argparse.ArgumentParser:
         if (group, verb) == ("improve", "unbrake"):
             leaf.add_argument("--why", required=True, help="the owner’s words authorizing resume")
             leaf.add_argument("--dry-run", action="store_true", help="preview the brake removal PR")
+        if (group, verb) == ("improve", "signals"):
+            leaf.add_argument("--timings", action="store_true", help="first run each suite once to record per-test timings (slow; no model)")
         if (group, verb) == ("improve", "labels"):
             leaf.add_argument("--dry-run", action="store_true", help="preview label definitions without changing GitHub")
         if (group, verb) == ("improve", "run"):
@@ -170,7 +172,7 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
         elif leaf[1] == "labels":
             board = improve.labels(cfg, repo=args.repo, dry_run=args.dry_run)
         elif leaf[1] == "signals":
-            board = improve.signals_board(cfg, repo=args.repo)
+            board = improve.signals_board(cfg, repo=args.repo, timings=args.timings)
         elif leaf[1] == "unbrake":
             from metalm_ops.improve import brake
 
@@ -182,7 +184,9 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
             if "findings" in repository:
                 counts = ", ".join(f"{name}={count}" for name, count in repository["counts"].items())
                 lines.append(
-                    f"{repository['name']}: {repository['files']} files; {counts}" + (f"; errors: {repository['errors']}" if repository["errors"] else "")
+                    f"{repository['name']}: {repository['files']} files; {counts}"
+                    + (f"; timings: {repository['timings']}" if repository.get("timings") else "")
+                    + (f"; errors: {repository['errors']}" if repository["errors"] else "")
                 )
                 lines.extend(
                     f"  {item['signal']:<11} {item['lenses'][0]:<18} {item['path']}:{item['start_line']} {item['detail']}" for item in repository["findings"]

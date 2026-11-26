@@ -16,7 +16,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterator
 
@@ -134,10 +134,45 @@ def _lock(config: Config) -> Iterator[None]:
 REVIEW_RESERVE_USD = 0.60  # three judge calls at the observed ~$0.15-0.20 each
 
 
+LIMIT_FILE = "codex-limit-until"  # state_dir/improve/; written when Codex reports its usage limit
+LIMIT_BACKOFF = timedelta(hours=6)  # when the reset time cannot be read from Codex's message
+
+
+def limit_until(message: str, now: datetime) -> datetime:
+    """The reset time Codex names ("try again at Nov 28th, 2026 8:03 PM"), else a fixed back-off."""
+    found = re.search(r"try again at ([A-Z][a-z]{2})[a-z]* (\d{1,2})(?:st|nd|rd|th)?, (\d{4}) (\d{1,2}):(\d{2}) ?([AP]M)", message)
+    if not found:
+        return now + LIMIT_BACKOFF
+    month, day, year, hour, minute, half = found.groups()
+    stamp = datetime.strptime(f"{month} {day} {year} {hour}:{minute} {half}", "%b %d %Y %I:%M %p")
+    return stamp.replace(tzinfo=now.tzinfo) if now.tzinfo else stamp
+
+
+def _record_limit(config: Config, message: str) -> None:
+    folder = config.state_dir / "improve"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / LIMIT_FILE).write_text(limit_until(message, NOW()).isoformat() + "\n")
+
+
+def codex_limit(config: Config, now: datetime | None = None) -> str:
+    """The reset time while the Codex usage limit holds, else empty."""
+    path = config.state_dir / "improve" / LIMIT_FILE
+    try:
+        until = datetime.fromisoformat(path.read_text().strip())
+    except (OSError, ValueError):
+        return ""
+    now = now or NOW()
+    if until.tzinfo is None and now.tzinfo is not None:
+        until = until.replace(tzinfo=now.tzinfo)
+    return until.isoformat() if until > now else ""
+
+
 def _cap(config: Config, *, reviews_only: bool = False) -> str:
     settings = config.improve
     if settings is None:
         return "improve is not configured"
+    if not reviews_only and codex_limit(config):
+        return f"system: Codex usage limit until {codex_limit(config)}"
     usage = store.usage(config)
     if not reviews_only and usage["codex_calls"] >= settings.max_codex_calls_per_day:
         return "daily cap reached (Codex calls)"
@@ -248,6 +283,7 @@ def status(config: Config, *, repo: str | None = None, now: datetime | None = No
         "usage": store.usage(config),
         "ok": not brake_error and not any(item.get("error") for item in repositories),
         "brake_error": brake_error,
+        "codex_limit_until": codex_limit(config),
         "next": "metalm-ops improve run --dry-run",
     }
     if repo is not None:
@@ -442,7 +478,13 @@ def _run_repo(
             config, run_id=run_id, repo=repository.name, role="propose", worktree=worktree, directory=directory, prompt=prompt, template=template
         )
         if proposal["skip"]:
-            row.update(outcome="skipped", reason=lenses.PROPOSER_SKIP + proposal["skip_reason"])
+            if proposal.get("limit"):
+                _record_limit(config, proposal["skip_reason"])
+            if proposal.get("failed"):
+                # A proposer that could not run is a failure, never "found nothing": it must not mark the lens done or hide from the brake.
+                row.update(outcome="failed", reason=proposal["skip_reason"])
+            else:
+                row.update(outcome="skipped", reason=lenses.PROPOSER_SKIP + proposal["skip_reason"])
             return row
         if proposal["lens"] != chosen or proposal["category"] != chosen:
             raise gates.GateError(f"proposal must use selected lens {chosen}")

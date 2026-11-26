@@ -74,6 +74,7 @@ class World:
         self.verify_envelope = None
         self.review_cost = 0.1
         self.proposal_error = None
+        self.proposal_exit = None  # (code, jsonl output) to simulate codex exiting non-zero
         self.review_error = None
         self.review_envelope = None
         self.open_pulls = []
@@ -203,6 +204,8 @@ class World:
             self.prompts.append(("propose", input, arguments))
             if self.proposal_error:
                 raise self.proposal_error
+            if self.proposal_exit:
+                return self.completed(arguments, code=self.proposal_exit[0], output=self.proposal_exit[1])
             self.edit(worktree)
             answer = self.proposal if isinstance(self.proposal, str) else json.dumps(self.proposal)
             Path(arguments[arguments.index("-o") + 1]).write_text(answer)

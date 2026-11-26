@@ -58,6 +58,10 @@ def validate(value: object, schema: dict, where: str = "answer") -> None:
         raise ValueError(f"{where}: unknown value")
 
 
+class UsageLimit(ValueError):
+    """The Codex subscription's usage limit: a system-wide pause, not this repo's failure."""
+
+
 def rejected(reason: str) -> dict:
     """A failed review is a rejection, never a guessed approval."""
     return {"verdict": "reject", "clear_cut": False, "confidence": 0.0, "behaviour_change": False, "risks": [], "reasons": reason}
@@ -153,6 +157,13 @@ def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, d
         (directory / f"{role}.stderr.log").write_text(result.stderr or "")
         if proposer:
             if result.returncode:
+                limit = next((line for line in output.splitlines() if "usage limit" in line.lower()), "")
+                if limit:
+                    try:
+                        limit = json.loads(limit).get("message") or limit
+                    except (ValueError, AttributeError):
+                        pass
+                    raise UsageLimit(str(limit))
                 raise ValueError(f"proposer exited {result.returncode}")
             value = json.loads(answer_path.read_text())
         else:
@@ -178,9 +189,11 @@ def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, d
                 partial = partial.decode(errors="replace")
             (directory / ("propose.jsonl" if proposer else f"{role}.json")).write_text(partial)
             reason = f"{role} timed out after {timeout} seconds"
+        if isinstance(error, UsageLimit):
+            reason = f"system: Codex usage limit: {error}"
         (directory / f"{role}.error.log").write_text(reason + "\n")
         return (
-            {"skip": True, "skip_reason": reason}
+            {"skip": True, "skip_reason": reason, "failed": True, "limit": isinstance(error, UsageLimit)}
             if proposer
             else ({"verdict": "uncertain", "counter_evidence": [], "reasons": reason} if role == "verify" else rejected(reason))
         )

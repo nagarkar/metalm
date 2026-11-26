@@ -227,7 +227,7 @@ def test_old_category_rows_remain_readable_in_status(world):
 def test_proposal_evidence_contract_rejects_missing_or_nonintegral_locations(world, evidence):
     proposed(world, evidence=evidence)
     row = execute(world)
-    assert row["outcome"] == "skipped"
+    assert row["outcome"] == "failed"
     assert not world.bodies and not world.verify_count
 
 

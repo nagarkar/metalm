@@ -66,6 +66,10 @@ class ImproveRepo:
 
 @dataclass(frozen=True, slots=True)
 class Improve:
+    slots: tuple[str, ...] = ("09:10", "13:10", "17:10", "21:10")
+    max_lateness_min: int = 60
+    lines_per_run: int = 400
+    decay: tuple[float, ...] = (1.0, 1.0, 0.75, 0.5, 0.5, 0.25, 0.25)
     enabled: bool = True
     codex_bin: str = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"
     model: str = "gpt-6-astra"
@@ -121,6 +125,10 @@ KNOWN = {
     "repo": {"name": str, "path": str, "github": str, "ports": list, "agents": list},
 }
 KNOWN["improve"] = {
+    "slots": list,
+    "max_lateness_min": int,
+    "lines_per_run": int,
+    "decay": list,
     "enabled": bool,
     "codex_bin": str,
     "model": str,
@@ -233,6 +241,17 @@ def _improve(data: dict, repositories: list[Repo]) -> Improve | None:
         return None
     settings = data["improve"]
     _check("improve", settings, KNOWN["improve"])
+    slots = settings.get("slots", Improve().slots)
+    if not 1 <= len(slots) <= 8 or any(not isinstance(slot, str) or not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", slot) for slot in slots):
+        raise ConfigError("improve.slots: expected 1 to 8 HH:MM times")
+    if any(left >= right for left, right in zip(slots, slots[1:])):
+        raise ConfigError("improve.slots: must be strictly increasing")
+    decay = settings.get("decay", Improve().decay)
+    if len(decay) != 7 or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1 for value in decay):
+        raise ConfigError("improve.decay: expected seven finite numbers between 0 and 1")
+    if settings.get("lines_per_run", 400) < 1:
+        raise ConfigError("improve.lines_per_run: must be positive")
+    settings = {**settings, "slots": tuple(slots), "decay": tuple(float(value) for value in decay)}
     configured = {repository.name: repository for repository in repositories}
     selected: list[ImproveRepo] = []
     seen: set[str] = set()

@@ -10,7 +10,7 @@ import plistlib
 from importlib import resources
 from pathlib import Path
 
-from metalm_ops.config import Config
+from metalm_ops.config import Config, Improve
 
 CHECKOUT = Path(__file__).resolve().parents[2]
 JOBS = ("backup", "serve", "improve")
@@ -24,6 +24,10 @@ def render(cfg: Config, job: str, checkout: Path = CHECKOUT) -> str:
     text = resources.files("metalm_ops").joinpath("templates", f"{job}.plist").read_text()
     for key, value in {"@LABEL@": label(cfg, job), "@CHECKOUT@": str(checkout), "@LOGDIR@": str(cfg.state_dir / "logs")}.items():
         text = text.replace(key, value)
+    if job == "improve":
+        intervals = [{"Hour": int(slot[:2]), "Minute": int(slot[3:])} for slot in (cfg.improve or Improve()).slots]
+        fragment = plistlib.dumps(intervals).decode().split('<plist version="1.0">', 1)[1].split("</plist>", 1)[0].strip()
+        text = text.replace("@SLOTS@", fragment)
     return text
 
 

@@ -45,6 +45,7 @@ def test_install_rerun_and_uninstall_restore_the_owner_file(home: Path) -> None:
     assert first.returncode == 0, first.stderr
     global_md = (home / ".claude/CLAUDE.md").read_text()
     assert global_md.startswith(OWNER_TEXT) and "<!-- metalm:begin -->" in global_md
+    assert "\n@~/.claude/metalm/guidelines/index.md\n" in global_md  # loaded in every session, no per-folder approval
     assert os.readlink(home / ".claude/metalm") == str(ROOT)
     assert os.readlink(home / ".claude/skills/metalm-setup") == str(ROOT / "skills/metalm-setup")
     assert os.readlink(home / ".local/bin/superlm-notify") == str(ROOT / "bin/superlm-notify")

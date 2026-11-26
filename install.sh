@@ -90,7 +90,10 @@ $BEGIN
 ## metalm (managed by $ROOT/install.sh; edits inside this block are overwritten)
 
 - Engineering rules for my repos live in metalm (\`~/.claude/metalm\`, a symlink to $ROOT); metalm governs.
-- A repo opts in with \`@~/.claude/metalm/guidelines/index.md\` in its \`CLAUDE.md\`.
+- A repo opts in with \`@~/.claude/metalm/guidelines/index.md\` in its \`CLAUDE.md\`. The same file is imported here too, so every session loads it with no per-folder approval of external imports (owner, 2026-11-25: "Load globally"):
+
+@~/.claude/metalm/guidelines/index.md
+
 - "Set up a repo", "make the repo compliant with guidelines", "adopt metalm" / "grandfather this repo", or "check conformance with metalm" means: run the \`metalm-setup\` skill.
 - Unattended or long-running work alerts with \`superlm-notify --repo <repo> [--title T] --body <message>\` (\`~/.local/bin\`, the SuperLM notifier).
 $END

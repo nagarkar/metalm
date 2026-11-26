@@ -6,6 +6,7 @@ name, so a typo never silently drops a database from the backup.
 
 from __future__ import annotations
 
+import math
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -54,6 +55,33 @@ class Repo:
 
 
 @dataclass(frozen=True, slots=True)
+class ImproveRepo:
+    name: str
+    test: str
+    merge: str = "merge"
+    exclude: tuple[str, ...] = ()
+    deploy: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Improve:
+    enabled: bool = True
+    codex_bin: str = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"
+    model: str = "gpt-6-astra"
+    effort: str = "high"
+    max_codex_calls_per_day: int = 20
+    claude_bin: str = "~/.local/bin/claude"
+    review_model: str = "claude-opus-5-5"
+    max_review_cost_usd_per_day: float = 2.00
+    propose_timeout_min: int = 20
+    review_timeout_min: int = 8
+    ci_timeout_min: int = 15
+    max_files: int = 5
+    max_changed_lines: int = 150
+    repos: tuple[ImproveRepo, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     label_prefix: str
     backup: Backup
@@ -61,6 +89,11 @@ class Config:
     databases: tuple[Database, ...] = ()
     repos: tuple[Repo, ...] = field(default_factory=tuple)
     state_dir: Path = STATE_DIR
+    improve: Improve | None = None
+
+    @property
+    def improve_label(self) -> str:
+        return f"{self.label_prefix}.metalm.improve"
 
     @property
     def backup_label(self) -> str:
@@ -86,18 +119,45 @@ KNOWN = {
     "database": {"repo": str, "name": str, "path": str},
     "repo": {"name": str, "path": str, "github": str, "ports": list, "agents": list},
 }
-TABLES = {"backup"}
+KNOWN["improve"] = {
+    "enabled": bool,
+    "codex_bin": str,
+    "model": str,
+    "effort": str,
+    "max_codex_calls_per_day": int,
+    "claude_bin": str,
+    "review_model": str,
+    "max_review_cost_usd_per_day": float,
+    "propose_timeout_min": int,
+    "review_timeout_min": int,
+    "ci_timeout_min": int,
+    "max_files": int,
+    "max_changed_lines": int,
+    "repo": list,
+}
+KNOWN["improve.repo"] = {"name": str, "test": str, "merge": str, "exclude": list, "deploy": str}
+TABLES = {"backup", "improve"}
 ARRAYS = {"database", "repo"}
 
 
 def _check(where: str, table: dict, known: dict) -> None:
+    if not isinstance(table, dict):
+        raise ConfigError(f"{where}: expected a table")
     for key, value in table.items():
         if key not in known:
             raise ConfigError(f"{where}: unknown key {key!r}")
         want = known[key]
-        if not isinstance(value, want) or (want is int and isinstance(value, bool)):
+        matches = isinstance(value, (int, float)) if want is float else isinstance(value, want)
+        if not matches or (want in (int, float) and isinstance(value, bool)):
             raise ConfigError(f"{where}.{key}: expected {want.__name__}, got {type(value).__name__}")
-        if want is int and value < 0:
+        if want is float:
+            try:
+                finite = math.isfinite(value)
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise ConfigError(f"{where}.{key}: must be finite")
+        if want in (int, float) and value < 0:
             raise ConfigError(f"{where}.{key}: must not be negative")
 
 
@@ -163,7 +223,45 @@ def parse(data: dict) -> Config:
         databases=tuple(databases),
         repos=tuple(repos),
         state_dir=_path(top.get("state_dir", str(STATE_DIR))),
+        improve=_improve(data, repos),
     )
+
+
+def _improve(data: dict, repositories: list[Repo]) -> Improve | None:
+    if "improve" not in data:
+        return None
+    settings = data["improve"]
+    _check("improve", settings, KNOWN["improve"])
+    configured = {repository.name: repository for repository in repositories}
+    selected: list[ImproveRepo] = []
+    seen: set[str] = set()
+    for index, row in enumerate(settings.get("repo", [])):
+        location = f"improve.repo[{index}]"
+        _check(location, row, KNOWN["improve.repo"])
+        for key in ("name", "test"):
+            if not row.get(key):
+                raise ConfigError(f"{location}.{key}: is required")
+        name = row["name"]
+        if not NAME_RE.fullmatch(name):
+            raise ConfigError(f"{location}.name: expected lowercase letters, digits, - or _")
+        if name not in configured:
+            raise ConfigError(f"{location}.name: {name!r} has no [[repo]] row")
+        if name in seen:
+            raise ConfigError(f"{location}.name: {name!r} is listed twice")
+        seen.add(name)
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", configured[name].github):
+            raise ConfigError(f"{location}.name: {name!r} needs repo.github in owner/repository form")
+        if row.get("merge", "merge") not in {"merge", "squash", "rebase"}:
+            raise ConfigError(f"{location}.merge: expected merge, squash or rebase")
+        excluded = row.get("exclude", [])
+        if not all(isinstance(pattern, str) and pattern for pattern in excluded):
+            raise ConfigError(f"{location}.exclude: expected nonempty glob strings")
+        try:
+            row["test"].format(venv="venv", worktree="worktree")
+        except (KeyError, ValueError, IndexError, AttributeError) as error:
+            raise ConfigError(f"{location}.test: use only {{venv}} and {{worktree}} placeholders") from error
+        selected.append(ImproveRepo(**{**row, "exclude": tuple(excluded)}))
+    return Improve(**{key: value for key, value in settings.items() if key != "repo"}, repos=tuple(selected))
 
 
 def load(path: Path | None = None) -> Config:

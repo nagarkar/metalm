@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {"type": "string", "enum": ["approve", "reject"], "description": "Approve only a clear-cut improvement; reject anything doubtful."},
+    "clear_cut": {"type": "boolean", "description": "Whether this could be merged without a team discussion."},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "Probability from zero to one that the verdict is correct."},
+    "behaviour_change": {"type": "boolean", "description": "Whether observable behavior changes, including the visible result of a UI fix."},
+    "risks": {"type": "array", "items": {"type": "string"}, "description": "Concrete potential harms identified by this reviewer."},
+    "reasons": {"type": "string", "description": "The reviewer's explanation for the verdict."}
+  },
+  "required": ["verdict", "clear_cut", "confidence", "behaviour_change", "risks", "reasons"]
+}

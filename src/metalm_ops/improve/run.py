@@ -1,0 +1,530 @@
+"""A serial, locked improvement pass with deterministic gates and durable outcomes.
+
+Each repository owns its failure boundary. The owner's checkout is read-only
+until a successful merge, when only clean main may fast-forward and deploy.
+"""
+
+from __future__ import annotations
+
+import fcntl
+import json
+import os
+import re
+import signal
+import subprocess
+import threading
+import time
+import uuid
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
+from typing import Iterator
+
+from metalm_ops import status as health
+from metalm_ops.config import Config, ImproveRepo, Repo
+from metalm_ops.improve import agents, gates, process, store
+
+GUIDELINES_DIR = Path("~/.claude/metalm/guidelines")
+SLEEP = time.sleep
+LABELS = (
+    ("auto-improve", "5319E7", "Opened by the daily auto-improve system (metalm-ops improve)"),
+    ("codex-automated", "10A37F", "Written by OpenAI Codex, reviewed by Claude; no human in the loop"),
+    ("auto-improve-rejected", "B60205", "Auto-improve PR closed by its reviewers, CI or gates"),
+    ("auto-improve-checked", "C2E0C6", "A Claude session checked this merged auto-improve PR"),
+    ("auto-improve-flagged", "FBCA04", "A Claude session flagged this auto-improve PR as risky"),
+)
+
+
+class ImproveError(Exception):
+    """A run prerequisite or external command failed, with an actionable reason."""
+
+
+@contextmanager
+def _termination_signal() -> Iterator[None]:
+    """Give a terminated CLI invocation the same cleanup path as an interrupt."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def terminate(signal_number: int, frame: object) -> None:
+        raise SystemExit(f"run interrupted by {signal.Signals(signal_number).name}")
+
+    previous = signal.signal(signal.SIGTERM, terminate)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def _selected(config: Config, name: str | None) -> list[tuple[ImproveRepo, Repo]]:
+    selected = list(config.improve.repos) if config.improve else []
+    if name is not None:
+        selected = [item for item in selected if item.name == name]
+        if not selected:
+            raise ImproveError(f"repo {name!r} is not opted in. Add [[improve.repo]] in ops.toml")
+    repositories = {repository.name: repository for repository in config.repos}
+    return [(item, repositories[item.name]) for item in selected]
+
+
+def _command(arguments: list[str], *, cwd: Path | None = None, directory: Path | None = None, timeout: float = 300) -> str:
+    result = process.run(arguments, cwd=cwd, timeout=timeout)
+    if directory is not None:
+        with (directory / "steps.log").open("a") as output:
+            output.write(f"{arguments[0]} {arguments[1] if len(arguments) > 1 else ''}: exit {result.returncode}\n")
+            output.write((result.stdout or "") + (result.stderr or "") + "\n")
+    if result.returncode:
+        raise ImproveError(f"{arguments[0]} failed (exit {result.returncode}): {(result.stderr or result.stdout).strip()}")
+    return result.stdout or ""
+
+
+def _github(repository: Repo, *arguments: str, directory: Path | None = None, timeout: float = 300) -> str:
+    if not repository.github:
+        raise ImproveError(f"repo {repository.name}: github is missing. Set repo.github in ops.toml")
+    return _command([health.gh(), *arguments, "--repo", repository.github], directory=directory, timeout=timeout)
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+@contextmanager
+def _lock(config: Config) -> Iterator[None]:
+    folder = config.state_dir / "improve"
+    folder.mkdir(parents=True, exist_ok=True)
+    with (folder / "lock").open("a+") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            lock.seek(0)
+            previous = lock.read().strip()
+            raise ImproveError(f"another improve run holds the lock (pid {previous or 'unknown'})") from error
+        try:
+            lock.seek(0)
+            previous = lock.read().strip()
+            if previous.isdigit() and int(previous) > 0 and _alive(int(previous)):
+                raise ImproveError(f"another improve run holds the lock (pid {previous})")
+            lock.seek(0)
+            lock.truncate()
+            lock.write(str(os.getpid()))
+            lock.flush()
+            try:
+                yield
+            finally:
+                lock.seek(0)
+                lock.truncate()
+                lock.flush()
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def _cap(config: Config, *, reviews_only: bool = False) -> str:
+    settings = config.improve
+    if settings is None:
+        return "improve is not configured"
+    usage = store.usage(config)
+    if not reviews_only and usage["codex_calls"] >= settings.max_codex_calls_per_day:
+        return "daily cap reached (Codex calls)"
+    if usage["review_cost_usd"] >= settings.max_review_cost_usd_per_day:
+        return "daily cap reached (Claude review cost)"
+    return ""
+
+
+def _skip(config: Config, repository: Repo, *, dry_run: bool = False, directory: Path | None = None) -> str:
+    settings = config.improve
+    if settings is None or not settings.enabled:
+        return "improve is disabled"
+    folder = config.state_dir / "improve"
+    if (folder / "PAUSE").exists():
+        return "system PAUSE file exists"
+    if (folder / f"paused-{repository.name}").exists():
+        return "repo is paused; delete paused-" + repository.name + " to resume"
+    cap = _cap(config)
+    if cap:
+        return cap
+    opened = json.loads(
+        _github(repository, "pr", "list", "--label", "auto-improve", "--state", "open", "--limit", "1", "--json", "number", directory=directory)
+    )
+    if opened:
+        return "an open auto-improve PR exists"
+    history = json.loads(
+        _github(repository, "pr", "list", "--label", "auto-improve", "--state", "all", "--limit", "3", "--json", "number,state", directory=directory)
+    )
+    if len(history) == 3 and all(item["state"] == "CLOSED" for item in history):
+        fingerprint = ",".join(str(item["number"]) for item in history)
+        if not store.pause_seen(config, repository.name, fingerprint):
+            if not dry_run:
+                (folder / f"paused-{repository.name}").write_text(f"three PRs in a row rejected: {fingerprint}\n")
+                store.record_pause(config, repository.name, fingerprint)
+            return "last three auto-improve PRs were closed unmerged"
+    return ""
+
+
+def _history(repository: Repo, directory: Path) -> str:
+    history = json.loads(
+        _github(
+            repository,
+            "pr",
+            "list",
+            "--label",
+            "auto-improve",
+            "--state",
+            "all",
+            "--limit",
+            "60",
+            "--json",
+            "number,title,state,closedAt,body",
+            directory=directory,
+        )
+    )
+    for item in history:
+        if item["state"] == "CLOSED":
+            comments = json.loads(_github(repository, "pr", "view", str(item["number"]), "--json", "comments", directory=directory))
+            reasons = [
+                line for comment in comments.get("comments", []) for line in comment.get("body", "").splitlines() if line.startswith("Closed by auto-improve:")
+            ]
+            item["reason"] = reasons[-1] if reasons else "No system close reason recorded"
+    return json.dumps(history, ensure_ascii=False)
+
+
+def labels(config: Config, *, repo: str | None = None, dry_run: bool = False) -> dict:
+    """Create or update the five attribution and review labels in opted-in repos."""
+    rows = []
+    for _, repository in _selected(config, repo):
+        if dry_run:
+            rows.append({"repo": repository.name, "ok": True, "reason": "would create or update five labels"})
+            continue
+        try:
+            for name, colour, description in LABELS:
+                _github(repository, "label", "create", name, "--force", "--color", colour, "--description", description)
+            rows.append({"repo": repository.name, "ok": True, "reason": "five labels created or updated"})
+        except (ImproveError, OSError, subprocess.TimeoutExpired) as error:
+            rows.append({"repo": repository.name, "ok": False, "reason": str(error)})
+    return {"rows": rows, "ok": all(row["ok"] for row in rows), "next": "metalm-ops doctor"}
+
+
+def status(config: Config) -> dict:
+    """Last seven outcomes per opted-in repo, including pause state and usage."""
+    repositories, rows = [], []
+    for selected, _ in _selected(config, None):
+        recent = store.read_runs(config, selected.name)
+        paused = (
+            not config.improve.enabled
+            or (config.state_dir / "improve" / "PAUSE").exists()
+            or (config.state_dir / "improve" / f"paused-{selected.name}").exists()
+        )
+        repositories.append({"name": selected.name, "paused": paused, "runs": recent})
+        rows.extend(recent)
+    return {"repos": repositories, "rows": rows, "usage": store.usage(config), "ok": True, "next": "metalm-ops improve run --dry-run"}
+
+
+def decision(senior: dict, boundaries: dict, category: str) -> str:
+    """The first failing merge condition, or an empty reason when reviews pass."""
+    for name, review in (("senior engineer", senior), ("boundaries", boundaries)):
+        if review["verdict"] != "approve":
+            return f"{name} reviewer rejected: {review['reasons'].splitlines()[0] if review['reasons'] else 'no reason given'}"
+    for name, review in (("senior engineer", senior), ("boundaries", boundaries)):
+        if not review["clear_cut"]:
+            return f"{name} reviewer did not find a clear-cut improvement"
+    for name, review in (("senior engineer", senior), ("boundaries", boundaries)):
+        if review["confidence"] < 0.8:
+            return f"{name} reviewer confidence {review['confidence']:g} is below 0.8"
+    if boundaries["behaviour_change"] and category != "ui":
+        return "boundaries reviewer found a behaviour change outside a UI fix"
+    return ""
+
+
+def _body(config: Config, run_id: str, proposal: dict, measured: dict) -> str:
+    settings = config.improve
+    return (
+        f"> **Opened by the auto-improve system:** OpenAI Codex (`codex exec`, model {settings.model}, effort {settings.effort}), "
+        f"run by `metalm-ops improve` on the owner's Mac, run `{run_id}`.\n"
+        "> **Why:** one small daily improvement per repo, under metalm `guidelines/auto-improve.md`. Two Claude reviewers "
+        "(Anthropic, a different provider from the writer) judge it next. It merges only if both approve and CI is green; otherwise it is closed.\n\n"
+        f"## What\n\n{proposal['summary']}\n\nCategory: {proposal['category']}\n\n"
+        f"## Why it is safe\n\n{proposal['why_safe']}\n\n"
+        f"## Tests\n\nCommand: `{measured['test']}`\n\nResult: passed; worktree imports passed.\n\n{proposal['tests_run']}\n\n"
+        f"## Files\n\n```text\n{measured['diff_stat']}\n```\n"
+    )
+
+
+def _prompt(name: str, values: dict) -> tuple[str, str]:
+    template = (agents.ROOT / "prompts" / f"{name}_v1.md").read_text()
+    return template, template.split("---", 2)[2].strip().format(**values)
+
+
+def _update(repository: Repo, selected: ImproveRepo, directory: Path) -> tuple[bool, str]:
+    branch = _command(["git", "branch", "--show-current"], cwd=repository.path, directory=directory).strip()
+    if branch != "main":
+        return False, f"checkout not updated: {branch or 'detached HEAD'}"
+    dirty = _command(["git", "status", "--porcelain"], cwd=repository.path, directory=directory)
+    if dirty.strip():
+        return False, "checkout not updated: uncommitted changes"
+    _command(["git", "-C", str(repository.path), "pull", "--ff-only"], directory=directory)
+    if selected.deploy:
+        try:
+            _command(["/bin/sh", "-c", selected.deploy], cwd=repository.path, directory=directory)
+        except (ImproveError, OSError, subprocess.TimeoutExpired) as error:
+            return True, f"merged; checkout updated; deploy failed: {error}"
+    return True, "merged; checkout updated" + (" and deployed" if selected.deploy else "")
+
+
+def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: str, no_pr: bool) -> dict:
+    settings = config.improve
+    assert settings is not None
+    started = datetime.now().astimezone()
+    directory = config.state_dir / "improve" / "runs" / run_id / repository.name
+    row = {
+        "run_id": run_id,
+        "repo": repository.name,
+        "started": started.isoformat(),
+        "finished": "",
+        "outcome": "failed",
+        "pr_number": None,
+        "pr_url": None,
+        "category": None,
+        "title": None,
+        "reason": "",
+        "codex_calls": 0,
+        "model": settings.model,
+        "checkout_updated": False,
+    }
+    worktree = config.state_dir / "improve" / "worktrees" / f"{repository.name}-{run_id}"
+    branch = f"auto-improve/{started:%Y%m%d}-{run_id}"
+    created = False
+    branch_created = False
+
+    def remove_worktree() -> None:
+        nonlocal created
+        if branch_created and not created:
+            registered = _command(["git", "-C", str(repository.path), "worktree", "list", "--porcelain"], directory=directory)
+            created = any(
+                line.startswith("worktree ") and Path(line.removeprefix("worktree ")).resolve() == worktree.resolve() for line in registered.splitlines()
+            )
+        if created:
+            _command(["git", "-C", str(repository.path), "worktree", "remove", "--force", str(worktree)], directory=directory)
+            created = False
+
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        reason = _skip(config, repository, directory=directory)
+        if reason:
+            row.update(outcome="skipped", reason=reason)
+            return row
+        _command(["git", "-C", str(repository.path), "fetch", "origin"], directory=directory)
+        worktree.parent.mkdir(parents=True, exist_ok=True)
+        branch_created = True  # even a failed add can leave a branch or a registered worktree
+        _command(["git", "-C", str(repository.path), "worktree", "add", "-b", branch, str(worktree), "origin/main"], directory=directory)
+        created = True
+        base = _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip()
+        index_md = (GUIDELINES_DIR.expanduser() / "index.md").read_text()
+        auto_improve_md = (GUIDELINES_DIR.expanduser() / "auto-improve.md").read_text()
+        claude_md = (worktree / "CLAUDE.md").read_text() if (worktree / "CLAUDE.md").is_file() else "No CLAUDE.md"
+        common = {"excludes": ", ".join((*gates.EXCLUDES, *selected.exclude)), "claude_md": claude_md}
+        template, prompt = _prompt(
+            "propose",
+            {
+                **common,
+                "max_files": settings.max_files,
+                "max_changed_lines": settings.max_changed_lines,
+                "test": gates.command(selected, repository, worktree),
+                "index_md": index_md,
+                "auto_improve_md": auto_improve_md,
+                "history": _history(repository, directory),
+            },
+        )
+        row["codex_calls"] += 1
+        proposal = agents.call(
+            config, run_id=run_id, repo=repository.name, role="propose", worktree=worktree, directory=directory, prompt=prompt, template=template
+        )
+        if proposal["skip"]:
+            row.update(outcome="skipped", reason=proposal["skip_reason"])
+            return row
+        row.update(category=proposal["category"], title=proposal["title"])
+        if _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip() != base:
+            raise gates.GateError("proposer created a commit; only Python may commit")
+        measured = gates.check(settings, selected, repository, worktree, directory)
+        row.update(
+            diff_stat=measured["diff_stat"],
+            gates={"tests": "passed", "imports": "passed", "files": len(measured["files"]), "changed_lines": measured["changed_lines"]},
+        )
+        if no_pr:
+            row.update(outcome="no-pr", reason="proposal and gates passed; discarded without a PR")
+            return row
+        _command(["git", "status", "--porcelain"], cwd=worktree, directory=directory)
+        _command(["git", "add", "-A"], cwd=worktree, directory=directory)
+        message = f"{proposal['title']}\n\nAuto-improve-run: {run_id}\nCo-Authored-By: Codex <noreply@openai.com>\n"
+        try:
+            _command(["git", "commit", "-m", message], cwd=worktree, directory=directory)
+        except ImproveError as error:
+            raise gates.GateError(f"commit or pre-commit hook failed: {error}") from error
+        if gates.inspect(settings, selected, worktree)["fingerprint"] != measured["fingerprint"]:
+            raise gates.GateError("pre-commit changed the tested proposal")
+        if _command(["git", "status", "--porcelain"], cwd=worktree, directory=directory).strip():
+            raise gates.GateError("pre-commit left uncommitted changes")
+        head = _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip()
+        _command(["git", "push", "-u", "origin", branch], cwd=worktree, directory=directory)
+        label_result = labels(config, repo=repository.name)
+        if not label_result["ok"]:
+            raise ImproveError(label_result["rows"][0]["reason"])
+        body = _body(config, run_id, proposal, measured)
+        body_file = directory / "pr-body.md"
+        body_file.write_text(body)
+        output = _github(
+            repository,
+            "pr",
+            "create",
+            "--base",
+            "main",
+            "--head",
+            branch,
+            "--title",
+            "[auto-improve] " + proposal["title"],
+            "--label",
+            "auto-improve",
+            "--label",
+            "codex-automated",
+            "--body-file",
+            str(body_file),
+            directory=directory,
+        )
+        urls = re.findall(r"https://[^\s]+/pull/(\d+)", output)
+        if not urls:
+            raise ImproveError("gh pr create returned no PR URL")
+        row.update(pr_number=int(urls[-1]), pr_url=re.findall(r"https://[^\s]+/pull/\d+", output)[-1])
+        diff = _github(repository, "pr", "diff", str(row["pr_number"]), directory=directory)
+        review_values = {**common, "pr_body": body, "diff": diff, "guidelines": index_md + "\n" + auto_improve_md}
+        reviews = []
+        for name, title in (("senior", "senior engineer"), ("boundaries", "boundaries")):
+            reason = _cap(config, reviews_only=True)
+            if reason:
+                review = agents.rejected(reason)
+            else:
+                template, prompt = _prompt(f"review_{name}", review_values)
+                review = agents.call(
+                    config, run_id=run_id, repo=repository.name, role=f"review-{name}", worktree=worktree, directory=directory, prompt=prompt, template=template
+                )
+            reviews.append(review)
+            comment = directory / f"review-{name}-comment.md"
+            comment.write_text(
+                f"### auto-improve review: {title} (Claude {settings.review_model})\n\n<!-- auto-improve -->\n"
+                f"Verdict: {review['verdict']}\nConfidence: {review['confidence']}\nRisks: {json.dumps(review['risks'])}\n\n{review['reasons']}\n"
+            )
+            _github(repository, "pr", "comment", str(row["pr_number"]), "--body-file", str(comment), directory=directory)
+        remove_worktree()
+        reason = decision(*reviews, proposal["category"])
+        if not reason:
+            SLEEP(20)
+            try:
+                result = process.run(
+                    [health.gh(), "pr", "checks", str(row["pr_number"]), "--watch", "--fail-fast", "--repo", repository.github],
+                    timeout=settings.ci_timeout_min * 60,
+                )
+                output = (result.stdout or "") + (result.stderr or "")
+                (directory / "checks.log").write_text(output)
+                if result.returncode and "no checks reported" not in output.lower():
+                    reason = "CI checks failed: " + next(iter(output.strip().splitlines()), f"exit {result.returncode}")
+            except subprocess.TimeoutExpired:
+                reason = "CI checks timed out"
+        if reason:
+            _github(repository, "pr", "close", str(row["pr_number"]), "--delete-branch", "--comment", "Closed by auto-improve: " + reason, directory=directory)
+            _github(repository, "pr", "edit", str(row["pr_number"]), "--add-label", "auto-improve-rejected", directory=directory)
+            row.update(outcome="rejected", reason=reason)
+        else:
+            _github(
+                repository, "pr", "merge", str(row["pr_number"]), "--" + selected.merge, "--delete-branch", "--match-head-commit", head, directory=directory
+            )
+            row.update(outcome="merged", reason="merged")
+            try:
+                updated, detail = _update(repository, selected, directory)
+                row.update(checkout_updated=updated, reason=detail)
+            except (ImproveError, OSError, subprocess.TimeoutExpired) as error:
+                row["reason"] = f"merged; checkout update failed: {error}"
+        return row
+    except gates.GateError as error:
+        row.update(outcome="gate-failed", reason=str(error))
+        return row
+    except Exception as error:
+        row.update(outcome="failed", reason=str(error))
+        if row.get("pr_number") and row.get("outcome") != "merged":
+            # A PR left open would block this repo every later night (an open auto-improve PR skips the run).
+            try:
+                _github(
+                    repository,
+                    "pr",
+                    "close",
+                    str(row["pr_number"]),
+                    "--delete-branch",
+                    "--comment",
+                    "Closed by auto-improve: the run failed: " + str(error)[:300],
+                    directory=directory,
+                )
+            except Exception as close_error:
+                row["reason"] = f"{error}; closing the PR also failed: {close_error}"
+        return row
+    except (KeyboardInterrupt, SystemExit) as error:
+        row.update(outcome="failed", reason=f"run interrupted by {type(error).__name__}: {error}")
+        raise
+    finally:
+        try:
+            remove_worktree()
+        except Exception as error:
+            row.update(outcome="failed", reason=f"{row['reason']}; worktree cleanup failed: {error}")
+        try:
+            if branch_created:
+                # gh --delete-branch may already have removed the local branch.
+                found = _command(["git", "-C", str(repository.path), "branch", "--list", branch], directory=directory)
+                if found.strip():
+                    _command(["git", "-C", str(repository.path), "branch", "-D", branch], directory=directory)
+        except Exception as error:
+            row.update(outcome="failed", reason=f"{row['reason']}; branch cleanup failed: {error}")
+        row["finished"] = datetime.now().astimezone().isoformat()
+        try:
+            (directory / "result.json").write_text(json.dumps(row, indent=2))
+        except OSError as error:
+            row.update(outcome="failed", reason=f"{row['reason']}; could not write run artifact: {error}")
+        store.record_run(config, row)
+
+
+def run(config: Config, *, repo: str | None = None, dry_run: bool = False, no_pr: bool = False) -> dict:
+    """Preview without writes, rehearse without publishing, or run the full pass."""
+    if dry_run and no_pr:
+        raise ImproveError("--dry-run and --no-pr cannot be combined")
+    selected = _selected(config, repo)
+    settings = config.improve
+    caps = (
+        {"max_codex_calls_per_day": settings.max_codex_calls_per_day, "max_review_cost_usd_per_day": settings.max_review_cost_usd_per_day} if settings else {}
+    )
+    if dry_run:
+        rows = []
+        for _, repository in selected:
+            try:
+                reason = _skip(config, repository, dry_run=True)
+                rows.append(
+                    {
+                        "repo": repository.name,
+                        "outcome": "skipped" if reason else "would-run",
+                        "reason": reason or "would propose, gate, review and merge or close",
+                    }
+                )
+            except Exception as error:
+                rows.append({"repo": repository.name, "outcome": "failed", "reason": str(error)})
+    else:
+        with _termination_signal(), _lock(config):
+            store.initialize(config)
+            run_id = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
+            rows = [_run_repo(config, entry, repository, run_id, no_pr) for entry, repository in selected]
+    return {
+        "rows": rows,
+        "ok": all(row["outcome"] != "failed" for row in rows),
+        "usage": store.usage(config),
+        "caps": caps,
+        "dry_run": dry_run,
+        "no_pr": no_pr,
+        "next": "metalm-ops improve run --no-pr" if dry_run else "metalm-ops improve status",
+    }

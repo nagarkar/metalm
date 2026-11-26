@@ -26,3 +26,41 @@ path = "~/workspace/repos/examplelm"
 github = "owner/examplelm"
 ports = [8700]                   # loopback ports of its served apps that answer /health (served-apps table); omit if none
 agents = ["com.example.examplelm.serve"]
+
+# Auto-improve is off when this table is absent. The example opts in these two repos.
+[[repo]]
+name = "computerlm"
+path = "~/workspace/repos/computerlm"
+github = "owner/computerlm"
+
+[[repo]]
+name = "marketlm"
+path = "~/workspace/repos/marketlm"
+github = "owner/marketlm"
+
+[improve]
+enabled = true                 # kill switch; <state_dir>/improve/PAUSE also stops every run
+codex_bin = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"
+model = "gpt-6-astra"
+effort = "high"
+max_codex_calls_per_day = 20
+claude_bin = "~/.local/bin/claude"
+review_model = "claude-opus-5-5"
+max_review_cost_usd_per_day = 2.00
+propose_timeout_min = 20
+review_timeout_min = 8
+ci_timeout_min = 15
+max_files = 5
+max_changed_lines = 150
+
+[[improve.repo]]
+name = "computerlm"            # path and github come from its [[repo]] row
+test = "{venv}/bin/pytest -q"  # {venv} is the repo's .venv; {worktree} is the isolated worktree
+merge = "merge"                # merge | squash | rebase
+exclude = []                   # additional fnmatch-style globs
+# deploy = "launchctl kickstart -k gui/$(id -u)/com.example.computerlm.serve"
+
+[[improve.repo]]
+name = "marketlm"
+test = "{venv}/bin/pytest -q"
+merge = "merge"

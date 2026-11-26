@@ -14,11 +14,19 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from metalm_ops import backup, deploy, doctor, offsite, schedule, server, status
+from metalm_ops import backup, deploy, doctor, offsite, prompts, schedule, server, status
 from metalm_ops.config import Config, ConfigError, load
+from metalm_ops.improve import run as improve
 
 # (group, verb) -> (description, example)
 LEAVES = {
+    ("improve", "run"): (
+        "Propose one small improvement per opted-in repo; Claude reviews may incur cost. Preview with --dry-run.",
+        "metalm-ops improve run --dry-run",
+    ),
+    ("improve", "status"): ("Show the last seven improvement runs per opted-in repo and pauses.", "metalm-ops improve status"),
+    ("improve", "labels"): ("Create or update the five auto-improve labels in each opted-in repo.", "metalm-ops improve labels --repo marketlm"),
+    ("prompts", None): ("List versioned agent prompts, schemas and content hashes.", "metalm-ops prompts --json"),
     ("backup", "run"): ("Copy every database in ops.toml to the local backup folder and verify each copy.", "metalm-ops backup run --dry-run"),
     ("backup", "offsite"): (
         "Send the newest local run to B2 with restic, apply retention, and check a 5% subset weekly.",
@@ -33,7 +41,7 @@ LEAVES = {
     ),
     ("discover", None): ("List SQLite files in the usual places and mark which ops.toml lists; writes nothing.", "metalm-ops discover"),
     ("doctor", None): ("Check every setup step no code installs and print the fix for each miss.", "metalm-ops doctor"),
-    ("schedule", "print"): ("Print the launch agent plist for the backup job or the dashboard.", "metalm-ops schedule print backup"),
+    ("schedule", "print"): ("Print the launch agent plist for backup, improve or the dashboard.", "metalm-ops schedule print backup"),
     ("help", None): ("List every verb, or show one.", "metalm-ops help backup run"),
     ("completion", None): ("Print bash completion for metalm-ops.", 'eval "$(metalm-ops completion)"'),
 }
@@ -69,6 +77,14 @@ def build_parser() -> argparse.ArgumentParser:
             leaf.add_argument("--dry-run", action="store_true", help="say what would happen; write and send nothing")
         if (group, verb) == ("backup", "offsite"):
             leaf.add_argument("--check", action="store_true", help="run the restic subset check even if one ran this week")
+        if group == "improve" and verb in {"run", "labels"}:
+            leaf.add_argument("--repo", help="only this opted-in repository")
+        if (group, verb) == ("improve", "labels"):
+            leaf.add_argument("--dry-run", action="store_true", help="preview label definitions without changing GitHub")
+        if (group, verb) == ("improve", "run"):
+            preview = leaf.add_mutually_exclusive_group()
+            preview.add_argument("--dry-run", action="store_true", help="preview skips and caps; call no model and write nothing")
+            preview.add_argument("--no-pr", action="store_true", help="run the proposer and gates, then discard; no commit or PR")
         if group == "status":
             leaf.add_argument("--alert", action="store_true", help="send one SuperLM banner when any check is red")
         if group == "serve":
@@ -89,7 +105,7 @@ def completion_script() -> str:
         '  local cur="${COMP_WORDS[COMP_CWORD]}" words\n'
         '  if [ "$COMP_CWORD" -eq 1 ]; then words="' + " ".join(groups) + '"\n'
         '  else case "${COMP_WORDS[1]}" in\n' + cases + '    *) words="";;\n  esac; fi\n'
-        '  COMPREPLY=($(compgen -W "$words --json --config --dry-run --alert --port" -- "$cur"))\n'
+        '  COMPREPLY=($(compgen -W "$words --json --config --dry-run --no-pr --repo --alert --port" -- "$cur"))\n'
         "}\ncomplete -F _metalm_ops metalm-ops\n"
     )
 
@@ -131,7 +147,34 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
     if leaf == ("completion", None):
         print(completion_script(), end="")
         return 0
+    if leaf == ("prompts", None):
+        rows = prompts.inventory()
+        _board(args, {"prompts": rows, "next": "metalm-ops improve run --dry-run"}, [f"{row['id']} v{row['version']} {row['sha256']}" for row in rows])
+        return 0
     cfg: Config = load(args.config)
+    if leaf[0] == "improve":
+        if leaf[1] == "run":
+            board = improve.run(cfg, repo=args.repo, dry_run=args.dry_run, no_pr=args.no_pr)
+        elif leaf[1] == "labels":
+            board = improve.labels(cfg, repo=args.repo, dry_run=args.dry_run)
+        else:
+            board = improve.status(cfg)
+        lines = []
+        for repository in board.get("repos", []):
+            lines.append(f"{repository['name']}: {'paused' if repository['paused'] else 'not paused'}")
+        for row in board.get("rows", []):
+            lines.append(" ".join(" ".join(str(row.get(key, "")).split()) for key in ("repo", "started", "outcome", "pr_url", "reason")).strip())
+            if row.get("diff_stat"):
+                lines.append(row["diff_stat"])
+            if row.get("gates"):
+                lines.append("gates: " + ", ".join(f"{name}={value}" for name, value in row["gates"].items()))
+        usage = board.get("usage", {})
+        if usage:
+            lines.append(f"usage: {usage.get('calls', usage.get('codex_calls', 0))} calls; review cost ${usage.get('review_cost_usd', 0):.2f}")
+        if board.get("caps"):
+            lines.append("caps: " + ", ".join(f"{name}={value}" for name, value in board["caps"].items()))
+        _board(args, board, lines)
+        return 0 if board.get("ok", True) else 1
     if leaf == ("backup", "run"):
         row = backup.run(cfg, dry_run=args.dry_run)
         bad = [i for i in row["items"] if not i["ok"]]
@@ -186,8 +229,13 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
         _board(args, {"ok": not bad, "checks": [asdict(f) for f in found], "next": "metalm-ops backup run" if not bad else "run each fix above"}, lines)
         return 1 if bad else 0
     if leaf == ("schedule", "print"):
-        print(schedule.render(cfg, args.job), end="")
-        print(f"install: {schedule.install_command(cfg, args.job)}", file=sys.stderr)
+        rendered = schedule.render(cfg, args.job)
+        install = schedule.install_command(cfg, args.job)
+        if args.json:
+            _board(args, {"job": args.job, "plist": rendered, "install": install, "next": "run the install command"}, [])
+        else:
+            print(rendered, end="")
+            print(f"install: {install}", file=sys.stderr)
         return 0
     raise AssertionError(leaf)
 
@@ -207,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         return dispatch(args, parser)
     except SystemExit as exc:
         return 0 if exc.code == 0 else 1
-    except (ConfigError, offsite.OffsiteError, deploy.DeployError, FileNotFoundError) as exc:
+    except (ConfigError, offsite.OffsiteError, deploy.DeployError, improve.ImproveError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except BrokenPipeError:

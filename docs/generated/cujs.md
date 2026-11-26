@@ -11,3 +11,7 @@ Each journey is proven by the test named beside it.
 ## `tests/test_install.py`
 
 - The owner runs install.sh: the global CLAUDE.md gains the metalm block with a backup, a rerun changes nothing, and --uninstall restores it. (`tests/test_install.py::test_install_rerun_and_uninstall_restore_the_owner_file`)
+
+## `tests/test_ops_improve.py`
+
+- The nightly job calls the improve.run API, proposes one change through Codex, and merges only after both Claude reviewers approve and gates and CI pass (`tests/test_ops_improve.py::test_two_approvals_and_green_ci_merge_with_provenance`)

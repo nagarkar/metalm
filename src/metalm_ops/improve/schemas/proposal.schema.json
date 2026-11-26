@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "skip": {"type": "boolean", "description": "True when no clear-cut improvement was made."},
+    "skip_reason": {"type": "string", "description": "Why the proposer skipped, empty when proposing."},
+    "category": {"type": "string", "enum": ["refactor", "docs", "duplicate", "ui"], "description": "The one permitted kind of improvement."},
+    "title": {"type": "string", "maxLength": 72, "description": "A short commit subject for the improvement."},
+    "summary": {"type": "string", "description": "What changed and why it improves the repository."},
+    "why_safe": {"type": "string", "description": "Why the change stays within the owner's boundaries."},
+    "tests_run": {"type": "string", "description": "Tests actually run and their results, never invented."}
+  },
+  "required": ["skip", "skip_reason", "category", "title", "summary", "why_safe", "tests_run"]
+}

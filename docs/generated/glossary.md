@@ -3,6 +3,8 @@
 # Glossary
 
 - **area** (`metalm_gendocs`): a package (a directory with `__init__.py` or `index.ts`/`index.js`) under the source root, a module directly inside the top Python package, or a Node file directly under the source root.
+- **call ledger** (`metalm_ops.improve`): the provider, prompt hashes, duration, outcome and reported cost of every attempted agent call.
 - **CUJ** (`metalm_gendocs`): a critical user journey, declared on the end-to-end test that proves it.
+- **improve run** (`metalm_ops.improve`): one serial pass over the opted-in repositories, with a durable row per repository.
 - **level** (`metalm_ops`): green, amber or red: the state of one check on the dashboard.
 - **run** (`metalm_ops`): one nightly invocation of `metalm-ops backup run`, written as one row of `runs.jsonl` whatever its outcome.

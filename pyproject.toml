@@ -21,7 +21,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-metalm_ops = ["assets/*", "templates/*"]
+metalm_ops = ["assets/*", "templates/*", "improve/prompts/*.md", "improve/schemas/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "examples/jev-decision/tests"]

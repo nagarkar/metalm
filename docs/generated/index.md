@@ -56,6 +56,12 @@ Strict loader for `ops.toml`, the one gitignored list of what metalm watches.
 
 `metalm-ops doctor`: every owner-run step no code installs, each with its fix command.
 
+## `metalm_ops.improve`
+
+`src/metalm_ops/improve/__init__.py`
+
+Daily small improvements, proposed by Codex and independently reviewed by Claude.
+
 ## `metalm_ops.offsite`
 
 `src/metalm_ops/offsite.py`

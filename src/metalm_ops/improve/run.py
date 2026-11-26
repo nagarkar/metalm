@@ -253,8 +253,18 @@ def _body(config: Config, run_id: str, proposal: dict, measured: dict) -> str:
     )
 
 
+def newest_prompt(name: str) -> Path:
+    """The highest-numbered `<name>_vN.md`: a new version supersedes the old one, which stays for history."""
+    versions = [
+        (int(m.group(1)), path) for path in (agents.ROOT / "prompts").glob(f"{name}_v*.md") if (m := re.fullmatch(rf"{re.escape(name)}_v(\d+)\.md", path.name))
+    ]
+    if not versions:
+        raise ImproveError(f"no prompt file {name}_v<N>.md in {agents.ROOT / 'prompts'}")
+    return max(versions)[1]
+
+
 def _prompt(name: str, values: dict) -> tuple[str, str]:
-    template = (agents.ROOT / "prompts" / f"{name}_v1.md").read_text()
+    template = newest_prompt(name).read_text()
     return template, template.split("---", 2)[2].strip().format(**values)
 
 

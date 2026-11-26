@@ -830,3 +830,10 @@ def test_no_package_under_src_fails_the_import_gate(world):
     world.edit = edit
     row = result(world, no_pr=True)[1]
     assert row["outcome"] == "gate-failed" and "no package under src/" in row["reason"]
+
+
+def test_proposer_uses_the_newest_prompt_and_is_told_not_to_skip_for_a_sandboxed_suite(world):
+    assert run.newest_prompt("propose").name == "propose_v2.md"
+    result(world, no_pr=True)
+    assert any(role == "propose" and "Never skip only because the sandbox blocked the tests" in text for role, text, _ in world.prompts)
+    assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v2"}

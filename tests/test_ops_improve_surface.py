@@ -260,8 +260,8 @@ def test_improve_cli_json_routes_preview_and_status(tmp_path, monkeypatch, capsy
 def test_prompts_inventory_and_json(capsys):
     assert cli.main(["prompts", "--json"]) == 0
     board = json.loads(capsys.readouterr().out)
-    assert {row["file"] for row in board["prompts"]} == {"propose_v1.md", "review_senior_v1.md", "review_boundaries_v1.md"}
-    assert all(row["version"] == 1 and len(row["sha256"]) == 64 for row in board["prompts"])
+    assert {row["file"] for row in board["prompts"]} == {"propose_v1.md", "propose_v2.md", "review_senior_v1.md", "review_boundaries_v1.md"}
+    assert all(row["version"] == int(row["file"].rsplit("_v", 1)[1].removesuffix(".md")) and len(row["sha256"]) == 64 for row in board["prompts"])
 
 
 def test_schedule_improve_json_board(tmp_path, monkeypatch, capsys):

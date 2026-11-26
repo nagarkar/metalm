@@ -51,8 +51,13 @@ LENSES = {
     "docs": ("documentation",),
     "untested": ("tests",),
     "slow-tests": ("performance",),
+    "frontend-churn": ("frontend-robustness", "ui"),
 }
-RUFF_SELECT = "C901,PLR0911,PLR0912,PLR0913,PLR0915,S,D100,D101,D103,D104"
+FRONTEND = ("*.html", "*.js", "*.jsx", "*.ts", "*.tsx", "*.vue", "*.svelte", "*.css")
+STEP_OF = {"complexity": "ruff", "security": "ruff", "docs": "ruff", "frontend-churn": "churn"}
+SLOW_TEST_GAIN = 0.8  # a slow test must get at least 20% faster; smaller differences are timing noise
+# PLR0913 (too many arguments) is left out: fixing it changes signatures, which is not a small safe change.
+RUFF_SELECT = "C901,PLR0911,PLR0912,PLR0915,S,D100,D101,D103,D104"
 # Security codes that flag ordinary tooling (asserts, subprocess with fixed arguments, random), not risk.
 RUFF_IGNORE = "S101,S311,S404,S603,S607"
 SKIPPED_PARTS = {"tests", "test", "docs", ".venv", "venv", "node_modules", "migrations", "generated", "build", "dist"}
@@ -75,9 +80,10 @@ def is_test(path: str) -> bool:
 
 def files(root: Path, excludes: tuple[str, ...] = ()) -> tuple[list[str], list[str]]:
     """Tracked Python sources and tests, minus generated, vendored and excluded paths."""
-    tracked = [path for path in _git(root, "ls-files", "-z", "--", "*.py").split("\x00") if path]
+    # --others: files the proposer just created (a new test, an extracted module) are measured too.
+    tracked = sorted({path for path in _git(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.py").split("\x00") if path})
     sources, tests = [], []
-    for path in sorted(tracked):
+    for path in tracked:
         if any(fnmatch.fnmatch(path, pattern) for pattern in excludes):
             continue
         if is_test(path):
@@ -135,12 +141,15 @@ def _functions(tree: ast.Module):
 
 
 def _enclosing(tree: ast.Module | None, line: int) -> str:
-    best = ""
+    """The innermost function or class holding a line, else "module"; never a line number, so edits elsewhere keep the fingerprint."""
+    best, size = "module", None
     if tree is None:
         return best
-    for node in _functions(tree):
-        if node.lineno <= line <= (node.end_lineno or node.lineno):
-            best = node.name
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.lineno <= line <= (node.end_lineno or node.lineno):
+            span = (node.end_lineno or node.lineno) - node.lineno
+            if size is None or span <= size:
+                best, size = node.name, span
     return best
 
 
@@ -198,16 +207,19 @@ def ruff(root: Path, sources: list[str], ruff_bin: Path, limits: dict, parsed: d
     for item in json.loads(result.stdout or "[]"):
         path = Path(item["filename"])
         path = str(path.relative_to(root)) if path.is_absolute() else str(path)
-        code, message = item["code"], item["message"]
+        code, message = item.get("code"), item["message"]
+        if not code:  # a syntax error in one file; the other files' findings still count
+            continue
         start = item["location"]["row"]
         end = item.get("end_location", {}).get("row", start)
         tree = parsed.get(path, ("", None))[1]
         name = re.search(r"`([^`]+)`", message)
-        symbol = name.group(1) if name and code.startswith(("C9", "PLR")) else f"{code}:{_enclosing(tree, start) or start}"
+        where = name.group(1) if name and code.startswith("C9") else _enclosing(tree, start)
+        symbol = f"{code}:{where}"
         if code.startswith(("C9", "PLR")):
             numbers = re.search(r"\((\d+) > (\d+)\)", message)
             value, limit = (int(numbers.group(1)), int(numbers.group(2))) if numbers else (1, 0)
-            found.append(finding("complexity", path, start, end, code, value, limit, message, f"{code}:{symbol}"))
+            found.append(finding("complexity", path, start, end, code, value, limit, message, symbol))
         elif code.startswith("S"):
             found.append(finding("security", path, start, end, code, 1, 0, message, symbol))
         elif code.startswith("D"):
@@ -215,21 +227,35 @@ def ruff(root: Path, sources: list[str], ruff_bin: Path, limits: dict, parsed: d
     return found
 
 
-def _imports(tree: ast.Module, module: str, is_package: bool) -> set[str]:
-    names = set()
+def _statements(tree: ast.AST, inside_functions: bool):
+    """Import statements; imports inside functions (the usual way to break a cycle) and under
+    `if TYPE_CHECKING:` are left out of the module graph unless asked for."""
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            yield node
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not inside_functions:
+            continue
+        elif isinstance(node, ast.If) and not inside_functions and "TYPE_CHECKING" in ast.unparse(node.test):
+            continue
+        else:
+            yield from _statements(node, inside_functions)
+
+
+def _imports(tree: ast.Module, module: str, is_package: bool, inside_functions: bool = False) -> list[tuple[str, list[str]]]:
+    """(base module, imported names) per import; `import a.b` is ("a.b", [])."""
+    result = []
     package = module if is_package else module.rpartition(".")[0]
-    for node in ast.walk(tree):
+    for node in _statements(tree, inside_functions):
         if isinstance(node, ast.Import):
-            names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
+            result.extend((alias.name, []) for alias in node.names)
+        else:
             base = node.module or ""
             if node.level:
                 anchor = package.split(".") if package else []
                 anchor = anchor[: len(anchor) - (node.level - 1)] if node.level > 1 else anchor
                 base = ".".join([*anchor, base] if base else anchor)
-            names.add(base)
-            names.update(f"{base}.{alias.name}" if base else alias.name for alias in node.names)
-    return {name for name in names if name}
+            result.append((base, [alias.name for alias in node.names]))
+    return result
 
 
 def _resolve(name: str, modules: dict[str, str]) -> str | None:
@@ -240,6 +266,20 @@ def _resolve(name: str, modules: dict[str, str]) -> str | None:
     return None
 
 
+def _targets(item: tuple[str, list[str]], modules: dict[str, str]) -> set[str]:
+    """Repo modules one import reaches: `from pkg import mod` reaches pkg.mod, not pkg's __init__."""
+    base, names = item
+    reached = set()
+    for name in names:
+        if f"{base}.{name}" in modules:
+            reached.add(f"{base}.{name}")
+        elif base and (target := _resolve(base, modules)):
+            reached.add(target)
+    if not names and base and (target := _resolve(base, modules)):
+        reached.add(target)
+    return reached
+
+
 def graph(sources: list[str], parsed: dict) -> dict[str, set[str]]:
     modules = {module_name(path): path for path in sources}
     edges: dict[str, set[str]] = {module: set() for module in modules}
@@ -247,10 +287,8 @@ def graph(sources: list[str], parsed: dict) -> dict[str, set[str]]:
         tree = parsed[path][1]
         if tree is None:
             continue
-        for name in _imports(tree, module, path.endswith("__init__.py")):
-            target = _resolve(name, modules)
-            if target and target != module:
-                edges[module].add(target)
+        for item in _imports(tree, module, path.endswith("__init__.py")):
+            edges[module].update(target for target in _targets(item, modules) if target != module)
     return edges
 
 
@@ -395,10 +433,10 @@ def tested_by(sources: list[str], tests: list[str], parsed_tests: dict) -> dict[
         tree = parsed_tests[test][1]
         if tree is None:
             continue
-        for name in _imports(tree, module_name(test), False):
-            target = _resolve(name, modules)
-            if target and test not in result[modules[target]]:
-                result[modules[target]].append(test)
+        for item in _imports(tree, module_name(test), False, inside_functions=True):
+            for target in _targets(item, modules):
+                if test not in result[modules[target]]:
+                    result[modules[target]].append(test)
     return result
 
 
@@ -406,7 +444,8 @@ def untested(sources: list[str], parsed: dict, coverage: dict[str, list[str]], l
     found = []
     for path in sources:
         lines = len(parsed[path][0].splitlines())
-        if not coverage.get(path) and lines > limits["untested_lines"] and not path.endswith("__init__.py"):
+        importable = all(part.isidentifier() for part in module_name(path).split("."))  # a test could import it
+        if importable and not coverage.get(path) and lines > limits["untested_lines"] and not path.endswith("__init__.py"):
             found.append(finding("untested", path, 1, lines, "importing test files", 0, 1, f"no test file imports {module_name(path)}", "module"))
     return found
 
@@ -418,8 +457,12 @@ def slow_tests(root: Path, junit: Path | None, limits: dict) -> list[dict]:
     for case in ElementTree.parse(junit).iter("testcase"):
         seconds = float(case.get("time") or 0)
         classname, name = case.get("classname", ""), case.get("name", "")
-        candidate = classname.replace(".", "/") + ".py"
-        path = candidate if (root / candidate).exists() else classname
+        parts, path = classname.split("."), classname
+        while parts:  # tests.test_x.TestY -> tests/test_x.py
+            if (root / ("/".join(parts) + ".py")).exists():
+                path = "/".join(parts) + ".py"
+                break
+            parts.pop()
         cases.append((seconds, path, f"{classname}::{name}", name))
     cases.sort(reverse=True)
     total = sum(seconds for seconds, *_ in cases)
@@ -434,13 +477,15 @@ def slow_tests(root: Path, junit: Path | None, limits: dict) -> list[dict]:
     ]
 
 
-def churn(root: Path, sources: list[str], now: datetime, limits: dict) -> list[dict]:
-    """The busiest source files by changed lines on first-parent main, excluding the system's own merges."""
+def churn(root: Path, sources: list[str], now: datetime, limits: dict, excludes: tuple[str, ...] = ()) -> list[dict]:
+    """The busiest source files by changed lines on first-parent main, excluding the system's own merges.
+    Front-end files are counted too, for the front-end lenses, which have no other signal."""
     since = (now - timedelta(days=limits["churn_days"])).astimezone(timezone.utc).isoformat()
     output = _git(
         root, "log", "HEAD", "--first-parent", "--diff-merges=first-parent", "--no-renames", "--numstat", "-z", "--format=%x1e%P%x00%B%x00", f"--since={since}"
     )
     counts: dict[str, int] = defaultdict(int)
+    front: dict[str, int] = defaultdict(int)
     wanted = set(sources)
     for record in output.split("\x1e"):
         if not record.strip("\x00\n "):
@@ -453,13 +498,25 @@ def churn(root: Path, sources: list[str], now: datetime, limits: dict) -> list[d
             if change.count("\t") < 2:
                 continue
             added, removed, path = change.split("\t", 2)
-            if path in wanted and added != "-":
+            if added == "-":
+                continue
+            if path in wanted:
                 counts[path] += int(added) + int(removed)
-    busiest = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[: limits["churn_files"]]
-    return [
-        finding("churn", path, 1, 1, "lines changed", changed, 0, f"{changed} lines changed in {limits['churn_days']} days", "recent")
-        for path, changed in busiest
-    ]
+            elif (
+                any(fnmatch.fnmatch(PurePosixPath(path).name, pattern) for pattern in FRONTEND)
+                and not SKIPPED_PARTS.intersection(PurePosixPath(path).parts[:-1])
+                and not any(fnmatch.fnmatch(path, pattern) for pattern in excludes)
+                and (root / path).exists()
+            ):
+                front[path] += int(added) + int(removed)
+    found = []
+    for signal, table in (("churn", counts), ("frontend-churn", front)):
+        busiest = sorted(table.items(), key=lambda item: (-item[1], item[0]))[: limits["churn_files"]]
+        found.extend(
+            finding(signal, path, 1, 1, "lines changed", changed, 0, f"{changed} lines changed in {limits['churn_days']} days", "recent")
+            for path, changed in busiest
+        )
+    return found
 
 
 def measure(
@@ -473,7 +530,7 @@ def measure(
     parsed_tests = {path: _parse(root, path) for path in tests}
     coverage = tested_by(sources, tests, parsed_tests)
     steps = {
-        "churn": lambda: churn(root, sources, now, limits),
+        "churn": lambda: churn(root, sources, now, limits, excludes),
         "size": lambda: size(root, sources, limits, parsed),
         "ruff": lambda: ruff(root, sources, ruff_bin, limits, parsed),
         "coupling": lambda: coupling(sources, parsed, limits),
@@ -487,6 +544,7 @@ def measure(
             findings.extend(step())
         except Exception as error:  # one broken tool must not hide the other signals
             errors.append({"signal": name, "error": str(error)[:300]})
+    findings = _merge(findings)
     return {
         "files": len(sources),
         "tests": len(tests),
@@ -495,6 +553,26 @@ def measure(
         "churned": [item["path"] for item in findings if item["signal"] == "churn"],
         "tested_by": coverage,
     }
+
+
+def _merge(findings: list[dict]) -> list[dict]:
+    """One finding per fingerprint: repeated hits (two S310 in one function, one block copied to several
+    places) become a count, so the gate asks for fewer, not for every copy at once."""
+    merged: dict[str, dict] = {}
+    for item in findings:
+        same = merged.get(item["fingerprint"])
+        if same is None:
+            merged[item["fingerprint"]] = dict(item)
+            continue
+        if item["signal"] in {"security", "docs"}:
+            same["value"] += item["value"]
+            same["start_line"] = min(same["start_line"], item["start_line"])
+            same["end_line"] = max(same["end_line"], item["end_line"])
+        elif item["value"] > same["value"]:
+            merged[item["fingerprint"]] = {**item, "related": sorted({*same.get("related", []), *item.get("related", [])})}
+        else:
+            same["related"] = sorted({*same.get("related", []), *item.get("related", [])})
+    return list(merged.values())
 
 
 def _shuffle(seed: str, fingerprint: str) -> str:
@@ -529,11 +607,17 @@ def target_files(report: dict, item: dict) -> list[str]:
 
 def improved(before: dict, after_report: dict) -> tuple[bool, str]:
     """Whether a proposal made its finding better: gone, or a smaller metric. Churn has no metric."""
-    if before["signal"] == "churn":
+    if before["signal"] in {"churn", "frontend-churn"}:
         return True, "churn finding: no metric to re-measure"
+    step = STEP_OF.get(before["signal"], before["signal"])
+    broken = [item["error"] for item in after_report.get("errors", []) if item["signal"] == step]
+    if broken:
+        # A tool that failed on the changed code cannot show the finding gone.
+        return False, f"finding not re-measured: {step} failed: {broken[0][:120]}"
     same = next((item for item in after_report["findings"] if item["fingerprint"] == before["fingerprint"]), None)
     if same is None:
         return True, f"{before['metric']} finding resolved"
-    if same["value"] < before["value"]:
+    limit = before["value"] * SLOW_TEST_GAIN if before["signal"] == "slow-tests" else before["value"]
+    if same["value"] < limit:
         return True, f"{before['metric']} {before['value']} -> {same['value']}"
     return False, f"finding not improved: {before['metric']} {before['value']} -> {same['value']}"

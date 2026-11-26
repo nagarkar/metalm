@@ -148,3 +148,69 @@ def test_improved_needs_the_finding_gone_or_smaller(report):
     worse = signals.improved(before, {"findings": [before]})
     assert not worse[0] and worse[1].startswith("finding not improved")
     assert signals.improved(by(report[1], "churn")[0], {"findings": []})[0]
+
+
+def test_a_new_untracked_test_file_counts_when_re_measuring(tmp_path):
+    root = plant(tmp_path / "repo")
+    before = next(item for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["fingerprint"] == "untested:src/pkg/lonely.py:module")
+    (root / "tests" / "test_lonely.py").write_text("from pkg import lonely\n\n\ndef test_f0():\n    assert lonely.f0() == 0\n")
+    after = signals.measure(root, ruff_bin=RUFF, now=NOW)
+    assert signals.improved(before, after) == (True, "importing test files finding resolved")
+
+
+def test_a_package_reexport_and_a_function_level_import_are_not_cycles(tmp_path):
+    root = tmp_path / "repo"
+    package = root / "src" / "pkg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('"""Pkg."""\nfrom pkg import cli\n')
+    (package / "cli.py").write_text('"""Cli."""\nfrom pkg import core\n')
+    (package / "core.py").write_text('"""Core."""\n\n\ndef run():\n    """Doc."""\n    from pkg import cli\n\n    return cli\n')
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "x")
+    edges = signals.graph(*signals.files(root)[:1], {path: signals._parse(root, path) for path in signals.files(root)[0]})
+    assert edges == {"pkg": {"pkg.cli"}, "pkg.cli": {"pkg.core"}, "pkg.core": set()}
+    assert not [item for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["signal"] == "coupling"]
+
+
+def test_fingerprints_name_the_symbol_so_edits_elsewhere_keep_them(tmp_path):
+    root = plant(tmp_path / "repo")
+    (root / "src" / "pkg" / "secret.py").write_text('"""Secret."""\nPASSWORD = "hunter22"\n')
+    first = {item["fingerprint"] for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["path"] == "src/pkg/secret.py"}
+    (root / "src" / "pkg" / "secret.py").write_text('"""Secret."""\n# a comment that shifts the line\n\nPASSWORD = "hunter22"\n')
+    second = {item["fingerprint"] for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["path"] == "src/pkg/secret.py"}
+    assert first == second == {"security:src/pkg/secret.py:S105:module"}
+
+
+def test_a_file_with_a_syntax_error_does_not_disable_ruff_for_the_rest(tmp_path):
+    root = plant(tmp_path / "repo")
+    (root / "src" / "pkg" / "broken.py").write_text("def broken(:\n")
+    measured = signals.measure(root, ruff_bin=RUFF, now=NOW)
+    assert measured["errors"] == [] and by(measured, "security")
+
+
+def test_repeated_hits_merge_into_one_counted_finding(tmp_path):
+    root = plant(tmp_path / "repo")
+    (root / "src" / "pkg" / "twice.py").write_text(
+        '"""Twice."""\nimport pickle\n\n\ndef load(a, b):\n    """Doc."""\n    return pickle.loads(a), pickle.loads(b)\n'
+    )
+    found = [item for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["path"] == "src/pkg/twice.py" and item["signal"] == "security"]
+    assert len(found) == 1 and found[0]["value"] == 2
+
+
+def test_the_gate_fails_when_the_measuring_tool_broke_and_slow_tests_need_a_real_gain(report):
+    before = by(report[1], "security")[0]
+    assert signals.improved(before, {"findings": [], "errors": [{"signal": "ruff", "error": "boom"}]})[0] is False
+    slow = {**before, "signal": "slow-tests", "metric": "seconds", "value": 2.1, "fingerprint": "slow-tests:t.py:x"}
+    assert not signals.improved(slow, {"findings": [{**slow, "value": 2.05}], "errors": []})[0]
+    assert signals.improved(slow, {"findings": [{**slow, "value": 1.5}], "errors": []})[0]
+
+
+def test_front_end_files_get_churn_findings_for_the_front_end_lenses(tmp_path):
+    root = plant(tmp_path / "repo")
+    (root / "static").mkdir()
+    (root / "static" / "app.js").write_text("console.log(1);\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "front end")
+    found = [item for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["signal"] == "frontend-churn"]
+    assert [item["path"] for item in found] == ["static/app.js"] and found[0]["lenses"] == ["frontend-robustness", "ui"]

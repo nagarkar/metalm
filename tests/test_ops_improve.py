@@ -950,3 +950,25 @@ def test_limit_reset_time_is_read_from_codex_and_falls_back_to_a_back_off():
     now = datetime(2026, 11, 26, 9, 41)
     assert run.limit_until("try again at Nov 28th, 2026 8:03 PM.", now) == datetime(2026, 11, 28, 20, 3)
     assert run.limit_until("try again later", now) == now + timedelta(hours=6)
+
+
+def test_a_finding_that_failed_the_gate_is_not_retried(world):
+    world.after_report = world.report
+    result(world, no_pr=True)
+    world.prompts.clear()
+    world.measures.clear()
+    _, row = result(world, no_pr=True)
+    assert "no measured finding" in row["reason"] and not world.prompts
+
+
+def test_a_proposal_that_adds_a_noqa_is_discarded(world):
+    original = world.edit
+
+    def edit(worktree):
+        original(worktree)
+        path = worktree / "src" / "sample" / "__init__.py"
+        path.write_text(path.read_text() + "VALUE = 1  # noqa: S105\n")
+
+    world.edit = edit
+    _, row = result(world, no_pr=True)
+    assert row["outcome"] == "gate-failed" and row["reason"].startswith("proposal silences a check instead of fixing it")

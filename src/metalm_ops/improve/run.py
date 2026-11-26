@@ -415,7 +415,10 @@ def _link_venv(repository: Repo, worktree: Path, directory: Path) -> None:
 
 RUFF_BIN = Path(sys.executable).parent / "ruff"  # metalm's own pinned ruff (beside its interpreter) measures every repo the same way
 JUNIT_DIR = "junit"  # state_dir/improve/junit/<repo>.xml: timings from the last green gate run
-TARGET_LINES = 1500  # longer target files are truncated in the prompt; the proposer may read the rest
+WINDOW = 150  # lines shown either side of the finding in a long primary file
+SHORT = 400  # files up to this length are shown whole
+SUPPORT_LINES = 200  # a long related or test file shows its head only
+SILENCERS = ("noqa", "pragma: no cover", "type: ignore", "nosec")  # adding one hides a finding instead of fixing it
 
 
 def _junit(config: Config, repo: str) -> Path:
@@ -431,29 +434,47 @@ def _keep_junit(config: Config, repo: str, directory: Path) -> None:
 
 
 def recent_targets(config: Config, repo: str, now: datetime) -> set[str]:
-    """Findings not to retry: a PR in the last 30 days, or a proposer skip in the last 14."""
+    """Findings not to retry: a PR in the last 30 days, or a proposer skip or failed gate in the last 14."""
     avoid = set()
     for row in store.read_runs(config, repo, limit=1000000):
         if not row.get("finding") or not row.get("finished"):
             continue
         finished = datetime.fromisoformat(row["finished"])
         age = (now.replace(tzinfo=None) - finished.replace(tzinfo=None)).days
-        if (row.get("pr_url") and age < 30) or (row["outcome"] == "skipped" and age < 14):
+        if (row.get("pr_url") and age < 30) or (row["outcome"] in {"skipped", "gate-failed"} and age < 14):
             avoid.add(row["finding"])
     return avoid
 
 
-def _target_text(worktree: Path, paths: list[str]) -> str:
+def _target_text(worktree: Path, paths: list[str], target: dict | None = None) -> str:
+    """Target files with line numbers: short files whole, the finding's file as a window around it, others' heads."""
     blocks = []
-    for path in paths:
+    for index, path in enumerate(paths):
         try:
             lines = (worktree / path).read_text().splitlines()
         except (OSError, UnicodeDecodeError):
             continue
-        shown = lines[:TARGET_LINES]
-        more = f"\n[... {len(lines) - TARGET_LINES} more lines; read the file if your change needs them]" if len(lines) > TARGET_LINES else ""
-        blocks.append(f'<file path="{path}">\n' + "\n".join(f"{number}: {line}" for number, line in enumerate(shown, 1)) + more + "\n</file>")
+        if len(lines) <= SHORT:
+            first, last = 1, len(lines)
+        elif index == 0 and target:
+            first = max(1, target["start_line"] - WINDOW)
+            last = min(len(lines), max(target["end_line"], target["start_line"]) + WINDOW)
+        else:
+            first, last = 1, min(len(lines), SUPPORT_LINES)
+        note = f" lines {first}-{last} of {len(lines)}; read more only if your change needs it" if (first, last) != (1, len(lines)) else ""
+        body = "\n".join(f"{number}: {lines[number - 1]}" for number in range(first, last + 1))
+        blocks.append(f'<file path="{path}"{" note=" + repr(note.strip()) if note else ""}>\n{body}\n</file>')
     return "\n".join(blocks)
+
+
+def _silences(worktree: Path, directory: Path) -> str:
+    """An added line that silences a linter or coverage, if any: such a change hides the finding."""
+    _command(["git", "add", "-A", "--intent-to-add"], cwd=worktree, directory=directory)
+    diff = _command(["git", "diff", "--no-color", "-U0", "HEAD"], cwd=worktree, directory=directory)
+    for line in diff.splitlines():
+        if line.startswith("+") and not line.startswith("+++") and any(word in line.lower() for word in SILENCERS):
+            return line[1:].strip()[:120]
+    return ""
 
 
 def _test_files_command(repository: Repo, tests: list[str]) -> str:
@@ -597,7 +618,7 @@ def _run_repo(
                     },
                     indent=2,
                 ),
-                "target_files": _target_text(worktree, target_paths),
+                "target_files": _target_text(worktree, target_paths, target),
                 "test_files_command": _test_files_command(repository, [path for path in target_paths if signals.is_test(path)]),
             },
         )
@@ -636,6 +657,9 @@ def _run_repo(
                 raise gates.GateError("tests lens may change tests only")
         if _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip() != base:
             raise gates.GateError("proposer created a commit; only Python may commit")
+        silenced = _silences(worktree, directory)
+        if silenced:
+            raise gates.GateError(f"proposal silences a check instead of fixing it: {silenced}")
         measured = gates.check(settings, selected, repository, worktree, directory)
         _keep_junit(config, repository.name, directory)
         after = signals.measure(worktree, ruff_bin=RUFF_BIN, excludes=excludes, thresholds=selected.thresholds, junit=directory / "junit.xml", now=started)

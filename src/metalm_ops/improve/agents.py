@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import math
 import shutil
 import subprocess
@@ -60,6 +61,12 @@ def rejected(reason: str) -> dict:
     return {"verdict": "reject", "clear_cut": False, "confidence": 0.0, "behaviour_change": False, "risks": [], "reasons": reason}
 
 
+def prompt_id(template: str) -> str:
+    """The `id:` from a prompt file's front matter, e.g. `propose_v2`; empty when it has none."""
+    match = re.search(r"^id:\s*(\S+)\s*$", template.split("---", 2)[1] if template.startswith("---") else "", re.MULTILINE)
+    return match.group(1) if match else ""
+
+
 def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, directory: Path, prompt: str, template: str) -> dict:
     """Invoke one proposer or independent reviewer and preserve its raw artifacts."""
     settings = config.improve
@@ -80,7 +87,7 @@ def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, d
             "role": role,
             "provider": "openai" if proposer else "anthropic",
             "model": settings.model if proposer else settings.review_model,
-            "prompt_id": "propose_v1" if proposer else role.replace("-", "_") + "_v1",
+            "prompt_id": prompt_id(template) or ("propose" if proposer else role.replace("-", "_")),
             "prompt_sha256": hashlib.sha256(template.encode()).hexdigest(),
             "payload_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
             "duration": 0.0,

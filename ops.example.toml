@@ -39,6 +39,10 @@ path = "~/workspace/repos/marketlm"
 github = "owner/marketlm"
 
 [improve]
+slots = ["09:10", "13:10", "17:10", "21:10"] # 1–8 increasing local times; never wakes the Mac
+max_lateness_min = 60          # skip a slot caught up late after sleep
+lines_per_run = 400            # positive; activity runs = ceil(demand / this), capped by slots
+decay = [1.0, 1.0, 0.75, 0.5, 0.5, 0.25, 0.25] # changed-line weights: today through six days ago
 enabled = true                 # kill switch; <state_dir>/improve/PAUSE also stops every run
 codex_bin = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"
 model = "gpt-6-astra"

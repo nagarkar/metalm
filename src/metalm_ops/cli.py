@@ -24,8 +24,12 @@ LEAVES = {
         "Propose one small improvement per opted-in repo; Claude reviews may incur cost. Preview with --dry-run.",
         "metalm-ops improve run --dry-run",
     ),
-    ("improve", "status"): ("Show the last seven improvement runs per opted-in repo and pauses.", "metalm-ops improve status"),
-    ("improve", "labels"): ("Create or update the five auto-improve labels in each opted-in repo.", "metalm-ops improve labels --repo marketlm"),
+    ("improve", "status"): ("Show cadence, brakes and the last ten improvement runs; --repo narrows the session check.", "metalm-ops improve status"),
+    ("improve", "labels"): ("Create or update the six auto-improve labels in each opted-in repo.", "metalm-ops improve labels --repo marketlm"),
+    ("improve", "unbrake"): (
+        "Open a brake removal PR quoting the owner; never merge it.",
+        'metalm-ops improve unbrake --repo marketlm --why "resume it" --dry-run',
+    ),
     ("prompts", None): ("List versioned agent prompts, schemas and content hashes.", "metalm-ops prompts --json"),
     ("backup", "run"): ("Copy every database in ops.toml to the local backup folder and verify each copy.", "metalm-ops backup run --dry-run"),
     ("backup", "offsite"): (
@@ -77,8 +81,11 @@ def build_parser() -> argparse.ArgumentParser:
             leaf.add_argument("--dry-run", action="store_true", help="say what would happen; write and send nothing")
         if (group, verb) == ("backup", "offsite"):
             leaf.add_argument("--check", action="store_true", help="run the restic subset check even if one ran this week")
-        if group == "improve" and verb in {"run", "labels"}:
-            leaf.add_argument("--repo", help="only this opted-in repository")
+        if group == "improve" and verb in {"run", "labels", "status", "unbrake"}:
+            leaf.add_argument("--repo", required=verb == "unbrake", help="only this repository")
+        if (group, verb) == ("improve", "unbrake"):
+            leaf.add_argument("--why", required=True, help="the owner’s words authorizing resume")
+            leaf.add_argument("--dry-run", action="store_true", help="preview the brake removal PR")
         if (group, verb) == ("improve", "labels"):
             leaf.add_argument("--dry-run", action="store_true", help="preview label definitions without changing GitHub")
         if (group, verb) == ("improve", "run"):
@@ -106,7 +113,7 @@ def completion_script() -> str:
         '  local cur="${COMP_WORDS[COMP_CWORD]}" words\n'
         '  if [ "$COMP_CWORD" -eq 1 ]; then words="' + " ".join(groups) + '"\n'
         '  else case "${COMP_WORDS[1]}" in\n' + cases + '    *) words="";;\n  esac; fi\n'
-        '  COMPREPLY=($(compgen -W "$words --json --config --dry-run --no-pr --repo --lens --alert --port" -- "$cur"))\n'
+        '  COMPREPLY=($(compgen -W "$words --json --config --dry-run --no-pr --repo --lens --why --alert --port" -- "$cur"))\n'
         "}\ncomplete -F _metalm_ops metalm-ops\n"
     )
 
@@ -125,7 +132,7 @@ def _board(args, board: dict, lines: list[str]) -> None:
     if getattr(args, "json", False):
         print(json.dumps(board, sort_keys=True))
     else:
-        print("\n".join(lines + [f"next: {board['next']}"]))
+        print("\n".join(lines + ([f"next: {board['next']}"] if "next" in board else [])))
 
 
 def _help(parser: argparse.ArgumentParser, words: list[str]) -> int:
@@ -158,15 +165,30 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
             board = improve.run(cfg, repo=args.repo, dry_run=args.dry_run, no_pr=args.no_pr, lens=args.lens)
         elif leaf[1] == "labels":
             board = improve.labels(cfg, repo=args.repo, dry_run=args.dry_run)
+        elif leaf[1] == "unbrake":
+            from metalm_ops.improve import brake
+
+            board = brake.unbrake(cfg, repo=args.repo, why=args.why, dry_run=args.dry_run)
         else:
-            board = improve.status(cfg)
+            board = improve.status(cfg, repo=args.repo)
         lines = []
         for repository in board.get("repos", []):
-            lines.append(f"{repository['name']}: {'paused' if repository['paused'] else 'not paused'}")
+            lines.append(
+                f"{repository['name']}: {'braked' if repository.get('brake') else 'not braked'} "
+                + " ".join(f"{key}={repository.get(key, '')}" for key in ("D", "T", "today", "overdue"))
+            )
         for row in board.get("rows", []):
             lines.append(" ".join(" ".join(str(row.get(key, "")).split()) for key in ("repo", "started", "lens", "outcome", "pr_url", "reason")).strip())
+            if row.get("title"):
+                lines.append(row["title"])
+            if row.get("body"):
+                lines.append(row["body"])
+            if "D" in row:
+                lines.append(" ".join(f"{key}={row.get(key, '')}" for key in ("D", "T", "today", "overdue", "due")))
             if row.get("diff_stat"):
                 lines.append(row["diff_stat"])
+            if row.get("brake_error"):
+                lines.append("brake failed: " + row["brake_error"])
             if row.get("gates"):
                 lines.append("gates: " + ", ".join(f"{name}={value}" for name, value in row["gates"].items()))
         usage = board.get("usage", {})

@@ -263,6 +263,25 @@ def newest_prompt(name: str) -> Path:
     return max(versions)[1]
 
 
+def _link_venv(repository: Repo, worktree: Path, directory: Path) -> None:
+    """Give the worktree the repo's `.venv` as a symlink, so pre-commit hooks with a relative
+    `entry: .venv/bin/...` (computerlm's import-contracts) run at commit time. The link must stay
+    out of the diff: `.venv/` in a .gitignore does not match a symlink, so if git does not ignore
+    it, `.venv` is added to the repository's shared `info/exclude` (it already ignores the folder)."""
+    source = repository.path / ".venv"
+    link = worktree / ".venv"
+    if not source.is_dir() or link.exists() or link.is_symlink():
+        return
+    link.symlink_to(source, target_is_directory=True)
+    ignored = subprocess.run(["git", "check-ignore", "-q", ".venv"], cwd=worktree, capture_output=True)
+    if ignored.returncode != 0:
+        exclude = Path(_command(["git", "rev-parse", "--git-path", "info/exclude"], cwd=worktree, directory=directory).strip())
+        exclude = exclude if exclude.is_absolute() else worktree / exclude
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        with exclude.open("a") as handle:
+            handle.write("\n.venv\n")
+
+
 def _prompt(name: str, values: dict) -> tuple[str, str]:
     template = newest_prompt(name).read_text()
     return template, template.split("---", 2)[2].strip().format(**values)
@@ -331,6 +350,7 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
         branch_created = True  # even a failed add can leave a branch or a registered worktree
         _command(["git", "-C", str(repository.path), "worktree", "add", "-b", branch, str(worktree), "origin/main"], directory=directory)
         created = True
+        _link_venv(repository, worktree, directory)
         base = _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip()
         index_md = (GUIDELINES_DIR.expanduser() / "index.md").read_text()
         auto_improve_md = (GUIDELINES_DIR.expanduser() / "auto-improve.md").read_text()

@@ -837,3 +837,19 @@ def test_proposer_uses_the_newest_prompt_and_is_told_not_to_skip_for_a_sandboxed
     result(world, no_pr=True)
     assert any(role == "propose" and "Never skip only because the sandbox blocked the tests" in text for role, text, _ in world.prompts)
     assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v2"}
+
+
+def test_worktree_gets_the_repo_venv_as_an_ignored_symlink(world):
+    (world.repos["alm"] / ".venv" / "bin").mkdir(parents=True, exist_ok=True)
+    seen = {}
+
+    def edit(worktree):
+        link = worktree / ".venv"
+        seen["link"] = link.is_symlink() and link.resolve() == (world.repos["alm"] / ".venv").resolve()
+        seen["status"] = git(worktree, "status", "--porcelain")
+        world.default_edit(worktree)
+
+    world.edit = edit
+    row = result(world, no_pr=True)[1]
+    assert seen["link"] and ".venv" not in seen["status"]
+    assert row["outcome"] == "no-pr" and ".venv" not in row["diff_stat"]

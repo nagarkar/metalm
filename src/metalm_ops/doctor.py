@@ -105,12 +105,30 @@ def failed(findings: list[Finding]) -> bool:
 def improve_checks(configuration: Config) -> list[Finding]:
     """Check the opt-in auto-improve dependencies without running either agent."""
     from metalm_ops.improve import agents
-    from metalm_ops.improve.run import LABELS
+    from metalm_ops.improve.run import LABELS, ImproveError, newest_prompt
 
     settings = configuration.improve
     if settings is None:
         return [Finding("auto-improve", True, "not configured; disabled", required=False)]
-    findings = []
+    from metalm_ops.improve import lenses
+
+    try:
+        for name in lenses.NAMES:
+            lenses.load(name)
+        for path in (agents.ROOT / "lenses").glob("*.md"):
+            header = lenses.metadata(path.read_text())
+            if any(header.get(key) not in {"true", "false"} for key in ("may_change_behaviour", "needs_measurement")):
+                raise ValueError(f"{path.name}: invalid lens flags")
+        for name in ("propose", "review_senior", "review_boundaries", "verify"):
+            newest_prompt(name)
+        for path in (agents.ROOT / "prompts").glob("*.md"):
+            metadata = lenses.metadata(path.read_text())
+            if not (agents.ROOT / "schemas" / metadata.get("output_schema", "")).is_file():
+                raise ValueError(f"{path.name}: missing output schema")
+        prompt_finding = Finding("improve lenses and prompts", True, "all packaged front matter parses")
+    except (ValueError, OSError, ImproveError) as error:
+        prompt_finding = Finding("improve lenses and prompts", False, str(error), "reinstall metalm from its main checkout")
+    findings = [prompt_finding]
     codex = agents.codex_binary(settings)
     claude = agents.claude_binary(settings)
     for name, executable in (("codex_bin", codex), ("claude_bin", claude)):

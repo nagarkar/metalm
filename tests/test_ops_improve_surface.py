@@ -240,7 +240,7 @@ def test_improve_cli_json_routes_preview_and_status(tmp_path, monkeypatch, capsy
         or {"rows": [], "ok": True, "usage": {"calls": 0, "review_cost_usd": 0}, "next": "metalm-ops improve status"},
     )
     assert cli.main(["improve", "run", "--repo", "alm", "--no-pr", "--json"]) == 0
-    assert seen == [{"repo": "alm", "dry_run": False, "no_pr": True}]
+    assert seen == [{"repo": "alm", "dry_run": False, "no_pr": True, "lens": None}]  # #84 adds optional lens selection.
     assert json.loads(capsys.readouterr().out)["next"] == "metalm-ops improve status"
     monkeypatch.setattr(
         run,
@@ -260,7 +260,18 @@ def test_improve_cli_json_routes_preview_and_status(tmp_path, monkeypatch, capsy
 def test_prompts_inventory_and_json(capsys):
     assert cli.main(["prompts", "--json"]) == 0
     board = json.loads(capsys.readouterr().out)
-    assert {row["file"] for row in board["prompts"]} == {"propose_v1.md", "propose_v2.md", "review_senior_v1.md", "review_boundaries_v1.md"}
+    # #84 adds a verifier and a new proposer prompt version.
+    expected = {
+        "propose_v1.md",
+        "propose_v2.md",
+        "propose_v3.md",
+        "review_senior_v1.md",
+        "review_senior_v2.md",
+        "review_boundaries_v1.md",
+        "review_boundaries_v2.md",
+        "verify_v1.md",
+    }
+    assert {row["file"] for row in board["prompts"]} == expected
     assert all(row["version"] == int(row["file"].rsplit("_v", 1)[1].removesuffix(".md")) and len(row["sha256"]) == 64 for row in board["prompts"])
 
 

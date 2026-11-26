@@ -36,8 +36,8 @@ def claude_binary(settings: Improve) -> str:
 def validate(value: object, schema: dict, where: str = "answer") -> None:
     """Validate this package's strict JSON Schema subset, raising a named error."""
     kind = schema["type"]
-    types = {"object": dict, "string": str, "boolean": bool, "array": list, "number": (int, float)}
-    if not isinstance(value, types[kind]) or (kind == "number" and isinstance(value, bool)):
+    types = {"object": dict, "string": str, "boolean": bool, "array": list, "number": (int, float), "integer": int}
+    if not isinstance(value, types[kind]) or (kind in {"number", "integer"} and isinstance(value, bool)):
         raise ValueError(f"{where}: expected {kind}")
     if kind == "object":
         if set(value) != set(schema["required"]):
@@ -45,12 +45,14 @@ def validate(value: object, schema: dict, where: str = "answer") -> None:
         for name, field in schema["properties"].items():
             validate(value[name], field, f"{where}.{name}")
     elif kind == "array":
+        if len(value) < schema.get("minItems", 0):
+            raise ValueError(f"{where}: too few items")
         for item in value:
             validate(item, schema["items"], where)
-    elif kind == "number":
+    elif kind in {"number", "integer"}:
         if (isinstance(value, float) and not math.isfinite(value)) or not schema.get("minimum", -math.inf) <= value <= schema.get("maximum", math.inf):
             raise ValueError(f"{where}: outside allowed range")
-    elif kind == "string" and len(value) > schema.get("maxLength", math.inf):
+    elif kind == "string" and not schema.get("minLength", 0) <= len(value) <= schema.get("maxLength", math.inf):
         raise ValueError(f"{where}: too long")
     if "enum" in schema and value not in schema["enum"]:
         raise ValueError(f"{where}: unknown value")
@@ -72,7 +74,7 @@ def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, d
     settings = config.improve
     assert settings is not None
     proposer = role == "propose"
-    schema_path = ROOT / "schemas" / ("proposal.schema.json" if proposer else "verdict.schema.json")
+    schema_path = ROOT / "schemas" / ("proposal.schema.json" if proposer else "verify.schema.json" if role == "verify" else "verdict.schema.json")
     schema_text = schema_path.read_text()
     answer_path = directory / f"{role}.json"
     directory.mkdir(parents=True, exist_ok=True)
@@ -177,7 +179,11 @@ def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, d
             (directory / ("propose.jsonl" if proposer else f"{role}.json")).write_text(partial)
             reason = f"{role} timed out after {timeout} seconds"
         (directory / f"{role}.error.log").write_text(reason + "\n")
-        return {"skip": True, "skip_reason": reason} if proposer else rejected(reason)
+        return (
+            {"skip": True, "skip_reason": reason}
+            if proposer
+            else ({"verdict": "uncertain", "counter_evidence": [], "reasons": reason} if role == "verify" else rejected(reason))
+        )
     finally:
         if not answer_path.exists():
             answer_path.write_text("")

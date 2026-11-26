@@ -29,11 +29,13 @@ A change here reaches every repo that imports `guidelines/index.md` on its next 
 - `metalm-ops discover`: read-only list of SQLite files in the places below, `NEW` where ops.toml does not list one yet.
 - `metalm-ops doctor`: setup steps no code installs, each with its fix; the nightly job runs it first.
 - `metalm-ops schedule print backup|serve|improve`: the launch agent plist to install; stderr prints the install command for the owner.
-- `metalm-ops improve run [--repo NAME] [--dry-run | --no-pr]`: one Codex proposal and two independent Claude reviews per opted-in repo; Python merges only after both approve and CI is green. `--dry-run` previews skips, caps and usage without models or writes; `--no-pr` runs the proposer and gates, then discards without a commit or PR. Review calls can incur cost.
-- `metalm-ops improve status`: the last seven runs per opted-in repo, PR links, reasons and pause state.
+- `metalm-ops improve run [--repo NAME] [--lens NAME] [--dry-run | --no-pr]`: one Codex proposal, an independent Claude verifier trying to disprove its claim, and two independent Claude reviews per opted-in repo; Python merges only after the verifier confirms, both reviewers approve and CI is green. `--dry-run` previews skips, caps and usage without models or writes; `--no-pr` runs the proposer and gates, then discards without a commit or PR. Review calls can incur cost.
+- `metalm-ops improve status`: the last seven runs per opted-in repo, lenses, PR links, reasons and pause state.
 - `metalm-ops improve labels [--repo NAME] [--dry-run]`: creates or updates the five system labels before the first live run.
 - `metalm-ops prompts [--json]`: lists the versioned proposer and reviewer prompts, schemas and hashes.
 - `scripts/nightly-improve.sh`: the 01:30 job (doctor, improve run); one failure-only banner, logs retained 30 days.
+
+Lenses rotate by oldest completed run, never-run first: readability, documentation, duplication, tests, backend-robustness, frontend-robustness, ui, performance and drift. Frontend lenses require tracked frontend files; optional `[[improve.repo]] lenses` limits them. `--lens NAME` forces an applicable lens and requires `--repo`. Performance requires before/after measurements; evidence quotes are checked against the base commit. This replaces codeteamlm, which is retired after this merges (the owner handles archiving and target migration).
 
 Pause all runs: create `<state_dir>/improve/PAUSE`, or set `[improve] enabled = false` in the global `~/.claude/metalm/ops.toml` (default true when the table exists; absent means off).
 Unpause one repo after three rejected PRs: delete `<state_dir>/improve/paused-<repo>` after reviewing its history.

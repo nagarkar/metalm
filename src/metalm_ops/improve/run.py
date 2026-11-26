@@ -22,7 +22,7 @@ from typing import Iterator
 
 from metalm_ops import status as health
 from metalm_ops.config import Config, ImproveRepo, Repo
-from metalm_ops.improve import agents, gates, process, store
+from metalm_ops.improve import agents, gates, lenses, process, store
 
 GUIDELINES_DIR = Path("~/.claude/metalm/guidelines")
 SLEEP = time.sleep
@@ -213,6 +213,8 @@ def status(config: Config) -> dict:
     repositories, rows = [], []
     for selected, _ in _selected(config, None):
         recent = store.read_runs(config, selected.name)
+        for row in recent:
+            row["lens"] = lenses.OLD_NAMES.get(row.get("category"), row.get("category"))
         paused = (
             not config.improve.enabled
             or (config.state_dir / "improve" / "PAUSE").exists()
@@ -223,8 +225,10 @@ def status(config: Config) -> dict:
     return {"repos": repositories, "rows": rows, "usage": store.usage(config), "ok": True, "next": "metalm-ops improve run --dry-run"}
 
 
-def decision(senior: dict, boundaries: dict, category: str) -> str:
+def decision(senior: dict, boundaries: dict, category: str, verifier: dict | None = None) -> str:
     """The first failing merge condition, or an empty reason when reviews pass."""
+    if verifier is not None and verifier["verdict"] != "confirmed":
+        return f"verifier {verifier['verdict']}: {verifier['reasons'].splitlines()[0] if verifier['reasons'] else 'no reason given'}"
     for name, review in (("senior engineer", senior), ("boundaries", boundaries)):
         if review["verdict"] != "approve":
             return f"{name} reviewer rejected: {review['reasons'].splitlines()[0] if review['reasons'] else 'no reason given'}"
@@ -234,18 +238,27 @@ def decision(senior: dict, boundaries: dict, category: str) -> str:
     for name, review in (("senior engineer", senior), ("boundaries", boundaries)):
         if review["confidence"] < 0.8:
             return f"{name} reviewer confidence {review['confidence']:g} is below 0.8"
-    if boundaries["behaviour_change"] and category != "ui":
-        return "boundaries reviewer found a behaviour change outside a UI fix"
+    if boundaries["behaviour_change"] and not lenses.load(lenses.OLD_NAMES.get(category, category)).may_change_behaviour:
+        return "boundaries reviewer found a behaviour change outside the selected lens"
     return ""
 
 
-def _body(config: Config, run_id: str, proposal: dict, measured: dict) -> str:
+def _body(config: Config, run_id: str, proposal: dict, measured: dict, repository: Repo, base: str) -> str:
+    from urllib.parse import quote
+
     settings = config.improve
+    evidence = "\n\n".join(
+        f"[{item['path']}:{item['start_line']}-{item['end_line']}](https://github.com/{repository.github}/blob/{base}/{quote(item['path'], safe='/')}#L{item['start_line']}-L{item['end_line']})\n\n"
+        + "\n".join("> " + line for line in item["quote"].splitlines())
+        for item in proposal["evidence"]
+    )
+    measurement = f"## Measurement\n\n{proposal['measurement']}\n\n" if lenses.load(proposal["lens"]).needs_measurement else ""
     return (
         f"> **Opened by the auto-improve system:** OpenAI Codex (`codex exec`, model {settings.model}, effort {settings.effort}), "
         f"run by `metalm-ops improve` on the owner's Mac, run `{run_id}`.\n"
         "> **Why:** one small daily improvement per repo, under metalm `guidelines/auto-improve.md`. Two Claude reviewers "
         "(Anthropic, a different provider from the writer) judge it next. It merges only if both approve and CI is green; otherwise it is closed.\n\n"
+        f"## Lens\n\n{proposal['lens']}\n\n## Claim\n\n{proposal['claim']}\n\n## Evidence\n\n{evidence}\n\n{measurement}"
         f"## What\n\n{proposal['summary']}\n\nCategory: {proposal['category']}\n\n"
         f"## Why it is safe\n\n{proposal['why_safe']}\n\n"
         f"## Tests\n\nCommand: `{measured['test']}`\n\nResult: passed; worktree imports passed.\n\n{proposal['tests_run']}\n\n"
@@ -253,10 +266,10 @@ def _body(config: Config, run_id: str, proposal: dict, measured: dict) -> str:
     )
 
 
-def newest_prompt(name: str) -> Path:
+def newest_prompt(name: str, folder: str = "prompts") -> Path:
     """The highest-numbered `<name>_vN.md`: a new version supersedes the old one, which stays for history."""
     versions = [
-        (int(m.group(1)), path) for path in (agents.ROOT / "prompts").glob(f"{name}_v*.md") if (m := re.fullmatch(rf"{re.escape(name)}_v(\d+)\.md", path.name))
+        (int(m.group(1)), path) for path in (agents.ROOT / folder).glob(f"{name}_v*.md") if (m := re.fullmatch(rf"{re.escape(name)}_v(\d+)\.md", path.name))
     ]
     if not versions:
         raise ImproveError(f"no prompt file {name}_v<N>.md in {agents.ROOT / 'prompts'}")
@@ -303,7 +316,7 @@ def _update(repository: Repo, selected: ImproveRepo, directory: Path) -> tuple[b
     return True, "merged; checkout updated" + (" and deployed" if selected.deploy else "")
 
 
-def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: str, no_pr: bool) -> dict:
+def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: str, no_pr: bool, forced_lens: str | None = None) -> dict:
     settings = config.improve
     assert settings is not None
     started = datetime.now().astimezone()
@@ -351,11 +364,24 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
         _command(["git", "-C", str(repository.path), "worktree", "add", "-b", branch, str(worktree), "origin/main"], directory=directory)
         created = True
         _link_venv(repository, worktree, directory)
+        available = lenses.applicable(selected, _command(["git", "ls-files", "-z"], cwd=worktree, directory=directory).split("\0"))
+        chosen = forced_lens or lenses.choose(available, store.read_runs(config, repository.name, limit=1000000))
+        if chosen not in available:
+            row.update(outcome="skipped", reason="no applicable lens" if chosen is None else f"lens {chosen} is not applicable")
+            return row
+        mission = lenses.load(chosen)
+        row.update(category=chosen, lens=chosen)
         base = _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip()
         index_md = (GUIDELINES_DIR.expanduser() / "index.md").read_text()
         auto_improve_md = (GUIDELINES_DIR.expanduser() / "auto-improve.md").read_text()
         claude_md = (worktree / "CLAUDE.md").read_text() if (worktree / "CLAUDE.md").is_file() else "No CLAUDE.md"
-        common = {"excludes": ", ".join((*gates.EXCLUDES, *selected.exclude)), "claude_md": claude_md}
+        common = {
+            "lens": chosen,
+            "mission": mission.mission,
+            "may_change_behaviour": mission.may_change_behaviour,
+            "excludes": ", ".join((*gates.EXCLUDES, *selected.exclude)),
+            "claude_md": claude_md,
+        }
         template, prompt = _prompt(
             "propose",
             {
@@ -375,7 +401,25 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
         if proposal["skip"]:
             row.update(outcome="skipped", reason=proposal["skip_reason"])
             return row
-        row.update(category=proposal["category"], title=proposal["title"])
+        if proposal["lens"] != chosen or proposal["category"] != chosen:
+            raise gates.GateError(f"proposal must use selected lens {chosen}")
+        row.update(title=proposal["title"])
+        quote_error = gates.check_evidence(worktree, proposal["evidence"], base)
+        if quote_error:
+            raise gates.GateError(quote_error)
+        if mission.needs_measurement and not proposal["measurement"].strip():
+            raise gates.GateError("performance lens needs a before/after measurement")
+        if chosen == "tests":
+            paths = gates.inspect(settings, selected, worktree)["files"]
+            if any(
+                not (
+                    "tests" in Path(path).parts
+                    or Path(path).name.startswith("test_")
+                    or Path(path).name.endswith(("_test.py", ".test.js", ".test.ts", ".spec.ts", ".spec.js"))
+                )
+                for path in paths
+            ):
+                raise gates.GateError("tests lens may change tests only")
         if _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip() != base:
             raise gates.GateError("proposer created a commit; only Python may commit")
         measured = gates.check(settings, selected, repository, worktree, directory)
@@ -402,7 +446,7 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
         label_result = labels(config, repo=repository.name)
         if not label_result["ok"]:
             raise ImproveError(label_result["rows"][0]["reason"])
-        body = _body(config, run_id, proposal, measured)
+        body = _body(config, run_id, proposal, measured, repository, base)
         body_file = directory / "pr-body.md"
         body_file.write_text(body)
         output = _github(
@@ -429,8 +473,43 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
         row.update(pr_number=int(urls[-1]), pr_url=re.findall(r"https://[^\s]+/pull/\d+", output)[-1])
         diff = _github(repository, "pr", "diff", str(row["pr_number"]), directory=directory)
         review_values = {**common, "pr_body": body, "diff": diff, "guidelines": index_md + "\n" + auto_improve_md}
+        reason = _cap(config, reviews_only=True)
+        if reason:
+            verification = {"verdict": "uncertain", "counter_evidence": [], "reasons": reason}
+        else:
+            base_files = {}
+            for path in measured["files"]:
+                result = process.run(["git", "show", f"{base}:{path}"], cwd=worktree)
+                base_files[path] = result.stdout if result.returncode == 0 else "File absent at base commit"
+            template, prompt = _prompt(
+                "verify",
+                {
+                    "claim": proposal["claim"],
+                    "evidence": json.dumps(proposal["evidence"]),
+                    "measurement": proposal["measurement"],
+                    "diff": diff,
+                    "mission": mission.mission,
+                    "base_files": "\n\n".join(f"File: {path}\n{contents}" for path, contents in base_files.items()),
+                },
+            )
+            verification = agents.call(
+                config, run_id=run_id, repo=repository.name, role="verify", worktree=worktree, directory=directory, prompt=prompt, template=template
+            )
+            if verification["verdict"] == "refuted":
+                invalid = (
+                    gates.check_evidence(worktree, verification["counter_evidence"], base)
+                    if verification["counter_evidence"]
+                    else "refutation has no counter-evidence"
+                )
+                if invalid:
+                    verification = {**verification, "verdict": "uncertain", "reasons": invalid + "; " + verification["reasons"]}
+        comment = directory / "verify-comment.md"
+        comment.write_text(
+            f"### auto-improve review: verifier (Claude {settings.review_model})\n\n<!-- auto-improve -->\nVerdict: {verification['verdict']}\n\n{verification['reasons']}\n\nCounter-evidence: {json.dumps(verification['counter_evidence'])}\n"
+        )
+        _github(repository, "pr", "comment", str(row["pr_number"]), "--body-file", str(comment), directory=directory)
         reviews = []
-        for name, title in (("senior", "senior engineer"), ("boundaries", "boundaries")):
+        for name, title in (("senior", "senior engineer"), ("boundaries", "boundaries")) if verification["verdict"] == "confirmed" else ():
             reason = _cap(config, reviews_only=True)
             if reason:
                 review = agents.rejected(reason)
@@ -447,7 +526,7 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
             )
             _github(repository, "pr", "comment", str(row["pr_number"]), "--body-file", str(comment), directory=directory)
         remove_worktree()
-        reason = decision(*reviews, proposal["category"])
+        reason = decision(*(reviews or [agents.rejected("not called"), agents.rejected("not called")]), proposal["category"], verification)
         if not reason:
             SLEEP(20)
             try:
@@ -521,10 +600,12 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
         store.record_run(config, row)
 
 
-def run(config: Config, *, repo: str | None = None, dry_run: bool = False, no_pr: bool = False) -> dict:
+def run(config: Config, *, repo: str | None = None, dry_run: bool = False, no_pr: bool = False, lens: str | None = None) -> dict:
     """Preview without writes, rehearse without publishing, or run the full pass."""
     if dry_run and no_pr:
         raise ImproveError("--dry-run and --no-pr cannot be combined")
+    if lens is not None and (repo is None or lens not in lenses.NAMES):
+        raise ImproveError("--lens requires --repo and a known lens")
     selected = _selected(config, repo)
     settings = config.improve
     caps = (
@@ -532,14 +613,20 @@ def run(config: Config, *, repo: str | None = None, dry_run: bool = False, no_pr
     )
     if dry_run:
         rows = []
-        for _, repository in selected:
+        for entry, repository in selected:
             try:
                 reason = _skip(config, repository, dry_run=True)
+                tracked = _command(["git", "ls-tree", "-r", "--name-only", "-z", "origin/main"], cwd=repository.path).split("\0")
+                available = lenses.applicable(entry, tracked)
+                chosen = lens or lenses.choose(available, store.read_runs(config, repository.name, limit=1000000))
+                if chosen not in available:
+                    reason = reason or "no applicable lens"
                 rows.append(
                     {
                         "repo": repository.name,
                         "outcome": "skipped" if reason else "would-run",
-                        "reason": reason or "would propose, gate, review and merge or close",
+                        "reason": reason or "would propose, gate, verify, review and merge or close",
+                        "lens": chosen,
                     }
                 )
             except Exception as error:
@@ -548,7 +635,7 @@ def run(config: Config, *, repo: str | None = None, dry_run: bool = False, no_pr
         with _termination_signal(), _lock(config):
             store.initialize(config)
             run_id = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
-            rows = [_run_repo(config, entry, repository, run_id, no_pr) for entry, repository in selected]
+            rows = [_run_repo(config, entry, repository, run_id, no_pr, lens) for entry, repository in selected]
     return {
         "rows": rows,
         "ok": all(row["outcome"] != "failed" for row in rows),

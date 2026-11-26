@@ -14,6 +14,7 @@ from metalm_ops.improve import process
 
 EXCLUDES = (
     "guidelines/**",
+    "improve/braked.toml",
     "CLAUDE.md",
     "AGENTS.md",
     "**/SKILL.md",
@@ -148,3 +149,24 @@ def check(settings: Improve, selected: ImproveRepo, repository: Repo, worktree: 
     if inspect(settings, selected, worktree)["fingerprint"] != measured["fingerprint"]:
         raise GateError("tests changed the proposal; the changed code was not verified")
     return {**measured, "test": test, "tests": "passed", "imports": "passed"}
+
+
+def check_evidence(worktree: Path, evidence: list[dict], base: str = "origin/main") -> str:
+    """Match full quoted line ranges at the pinned base, normalizing only within lines."""
+    for item in evidence:
+        name, start, end = item["path"], item["start_line"], item["end_line"]
+        reason = f"evidence quote not found: {name}:{start}-{end}"
+        if not name or Path(name).is_absolute() or ".." in Path(name).parts or start < 1 or end < start:
+            return reason
+        result = process.run(["git", "show", f"{base}:{name}"], cwd=worktree)
+        if result.returncode:
+            return reason
+        lines = result.stdout.removesuffix("\n").split("\n") if result.stdout else []
+        quoted = item["quote"].removesuffix("\n").split("\n")
+
+        def normalize(values: list[str]) -> list[str]:
+            return [" ".join(line.split()) for line in values]
+
+        if end > len(lines) or not quoted or normalize(lines[start - 1 : end]) != normalize(quoted):
+            return reason
+    return ""

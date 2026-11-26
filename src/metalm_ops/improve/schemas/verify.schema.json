@@ -1,0 +1,59 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "counter_evidence",
+    "reasons"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "confirmed",
+        "refuted",
+        "uncertain"
+      ],
+      "description": "Whether an attempt to disprove the claim succeeded."
+    },
+    "counter_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "start_line",
+          "end_line",
+          "quote"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Repo-relative base file path."
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "First quoted base line, one-based."
+          },
+          "end_line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Last quoted base line, inclusive."
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact base excerpt; whitespace within a line may vary."
+          }
+        }
+      },
+      "description": "Exact base quotes supporting the attempted disproof."
+    },
+    "reasons": {
+      "type": "string",
+      "description": "What was checked and why the verdict follows."
+    }
+  }
+}

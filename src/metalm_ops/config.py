@@ -56,6 +56,8 @@ class Repo:
 
 @dataclass(frozen=True, slots=True)
 class ImproveRepo:
+    """Auto-improve settings for one repository: commands, merge method, exclusions, lenses and signal thresholds."""
+
     name: str
     test: str
     merge: str = "merge"

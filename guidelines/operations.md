@@ -5,7 +5,7 @@ Scope: served apps on this Mac, their servers and launch agents, and checking pa
 (owner) Every rule in this section is the owner's.
 - Every app serves its page on loopback behind `tailscale serve`, all apps under one tailnet name, one HTTPS port each.
 - The tailnet name and the port table (app, tailnet HTTPS port, local server, launch agent) live in the owner's global `~/.claude/CLAUDE.md` under `## Served apps (this Mac)`, never in git. It is the one place ports are recorded. (owner)
-- User-specific details (host names, tailnet names, this Mac's ports, account ids, personal paths, and any other names or tables that identify the owner or this machine) never enter git: not in guidelines, skills, docs, tests or fixtures. They live in exactly one of: (owner)
+- User-specific details (host names, tailnet names, this Mac's ports, account ids, personal paths, and any other names or tables that identify the owner or this machine) never enter git, nor the text of PRs and issues: not in guidelines, skills, docs, tests, fixtures, commit messages or PR bodies. They live in exactly one of: (owner)
   - the owner's global `~/.claude/CLAUDE.md`, one section per kind (`## Served apps (this Mac)`), for what every session may need;
   - Claude's memory for the repo (`~/.claude/projects/<repo>/memory/`), for what only that repo's sessions need;
   - the repo's gitignored `.env`, for values code reads at run time (keys, pointers).

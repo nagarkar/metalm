@@ -1,5 +1,5 @@
 # Auto-improve
-Scope: the daily system that proposes, reviews and merges small improvements in every repo that imports metalm, and how a session checks its work. The system's code and schedule: metalm issue "auto-improve system".
+Scope: the daily system that proposes, reviews and merges small improvements in every repo that imports metalm, and how a session checks its work. The system's code and schedule: nagarkar/metalm#80 (`metalm-ops improve`).
 
 ## What the system does
 (owner) Every rule in this section is the owner's. The owner, 2026-11-25: "every PR is like a small PR that just finds like one thing to fix and improves that"; "in cases where it's not a clear-cut improvement, I want that PR to be automatically canceled"; "if the changes are reasonable, commit them and merge them".

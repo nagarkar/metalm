@@ -25,6 +25,7 @@ Scope: how every `*lm` repo's CLI is declared, documented, completed, printed an
 ## Setup and doctor
 - `setup` records the workspace pointer in `.env` (only inside the tool's marked block, after a timestamped backup written outside the checkout to `~/.local/state/<tool>/env-backups/`, never beside `.env` (coding.md#security-and-secrets), with a diff; `--dry-run`; a second run says nothing changed). It creates nothing else.
 - `doctor` lists each check with its state, detail and fix, exits 1 when a required check fails, and every scheduled job runs it first.
+- A PR that adds a capability or a verb also updates the repo skill (what the verb is for, when to run it, how) and `doctor` (a check for any setup the new verb needs), in the same merge. The owner, 2026-11-25: "when you merge any new capabilities or new verbs, that merge includes a skill update to make sure the skill knows what to do with it and how to use it. And any updates to the doctor verb are also included." (owner)
 
 ## Tests that hold the surface
 - One test per rule: every leaf has a description and an example; `help` lists every leaf; every leaf resolves to an API function; `--json` boards parse and carry `next`; a usage error exits 1; the completion script loads in a real bash and offers a subverb; the repo skill names every leaf verb; no verb declares `--yes`; no verb prints content; the MCP tool set (if any) equals its declared list, with each CLI-only verb justified.

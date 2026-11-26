@@ -347,3 +347,18 @@ def test_empty_base_file_has_no_line_one(world):
     git(path, "commit", "-m", "Empty file fixture")
     git(path, "push", "origin", "main")
     assert gates.check_evidence(path, [{"path": "empty.txt", "start_line": 1, "end_line": 1, "quote": " "}]) == "evidence quote not found: empty.txt:1-1"
+
+
+@pytest.mark.parametrize("value", [{"unknown": 3}, {"size_lines": 0}, {"size_lines": True}, {"size_lines": "600"}])
+def test_configuration_rejects_unknown_or_invalid_thresholds(world, value):
+    from metalm_ops.config import ConfigError
+
+    world.data["improve"]["repo"][0]["thresholds"] = value
+    with pytest.raises(ConfigError, match="thresholds"):
+        world.configure()
+
+
+def test_configuration_accepts_threshold_overrides(world):
+    world.data["improve"]["repo"][0]["thresholds"] = {"size_lines": 600, "slow_test_seconds": 1.5}
+    world.configure()
+    assert world.config.improve.repos[0].thresholds == {"size_lines": 600, "slow_test_seconds": 1.5}

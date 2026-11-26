@@ -62,6 +62,7 @@ class ImproveRepo:
     exclude: tuple[str, ...] = ()
     deploy: str = ""
     lenses: tuple[str, ...] | None = None
+    thresholds: dict = field(default_factory=dict)  # overrides of signals.THRESHOLDS for this repo
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +145,7 @@ KNOWN["improve"] = {
     "max_changed_lines": int,
     "repo": list,
 }
-KNOWN["improve.repo"] = {"name": str, "test": str, "merge": str, "exclude": list, "deploy": str, "lenses": list}
+KNOWN["improve.repo"] = {"name": str, "test": str, "merge": str, "exclude": list, "deploy": str, "lenses": list, "thresholds": dict}
 TABLES = {"backup", "improve"}
 ARRAYS = {"database", "repo"}
 
@@ -287,6 +288,14 @@ def _improve(data: dict, repositories: list[Repo]) -> Improve | None:
             raise ConfigError(f"{location}.lenses: unknown lens; expected {', '.join(NAMES)}")
         if chosen is not None and len(set(chosen)) != len(chosen):
             raise ConfigError(f"{location}.lenses: duplicate lens")
+        from metalm_ops.improve.signals import THRESHOLDS
+
+        limits = row.get("thresholds", {})
+        for key, value in limits.items():
+            if key not in THRESHOLDS:
+                raise ConfigError(f"{location}.thresholds: unknown {key!r}; expected {', '.join(THRESHOLDS)}")
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+                raise ConfigError(f"{location}.thresholds.{key}: expected a positive number")
         selected.append(ImproveRepo(**{**row, "exclude": tuple(excluded), "lenses": tuple(chosen) if chosen is not None else None}))
     return Improve(**{key: value for key, value in settings.items() if key != "repo"}, repos=tuple(selected))
 

@@ -864,11 +864,42 @@ def test_no_package_under_src_fails_the_import_gate(world):
     assert row["outcome"] == "gate-failed" and "no package under src/" in row["reason"]
 
 
-def test_proposer_uses_the_newest_prompt_and_is_told_not_to_skip_for_a_sandboxed_suite(world):
-    assert run.newest_prompt("propose").name == "propose_v3.md"
+def test_proposer_gets_the_finding_its_files_and_a_budget_not_the_whole_repo(world):
+    assert run.newest_prompt("propose").name == "propose_v4.md"
     result(world, no_pr=True)
-    assert any(role == "propose" and "Never skip only because the sandbox blocked the tests" in text for role, text, _ in world.prompts)
-    assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v3"}
+    text = next(text for role, text, _ in world.prompts if role == "propose")
+    assert "fixture finding" in text and '<file path="src/sample/__init__.py">' in text
+    assert "about 10 actions" in text and "do NOT run the repository's full test suite" in text
+    assert "<guidelines>" not in text  # the full guideline set is no longer sent
+    assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v4"}
+
+
+def test_no_measured_finding_for_the_lens_skips_without_calling_codex(world):
+    world.report = {**world.report, "findings": []}
+    _, row = result(world)
+    assert row["outcome"] == "skipped" and row["reason"] == "proposer found nothing: no measured finding for readability"
+    assert not world.prompts
+
+
+def test_a_proposal_that_does_not_improve_its_finding_is_discarded(world):
+    world.after_report = world.report
+    _, row = result(world, no_pr=True)
+    assert row["outcome"] == "gate-failed" and row["reason"].startswith("finding not improved: lines 500 -> 500")
+
+
+def test_the_run_row_keeps_the_finding_and_the_proposer_tokens(world):
+    _, row = result(world)
+    assert row["finding"] == "size:src/sample/__init__.py:"
+    stored = world.ledger("run")[0]
+    assert stored["finding"] == "size:src/sample/__init__.py:" and "tokens_in" in stored
+
+
+def test_a_finding_with_a_recent_pr_is_not_retried(world):
+    result(world)
+    world.prompts.clear()
+    world.measures.clear()
+    _, row = result(world, repo="alm")
+    assert row["outcome"] == "skipped" and "no measured finding" in row["reason"] and not world.prompts
 
 
 def test_worktree_gets_the_repo_venv_as_an_ignored_symlink(world):

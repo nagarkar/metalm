@@ -120,6 +120,8 @@ def check(settings: Improve, selected: ImproveRepo, repository: Repo, worktree: 
     environment = dict(os.environ)
     environment["PYTHONPATH"] = str(worktree / "src") + (os.pathsep + environment["PYTHONPATH"] if environment.get("PYTHONPATH") else "")
     test = command(selected, repository, worktree)
+    # Per-test timings for the slow-tests signal; PYTEST_ADDOPTS reaches pytest however the command starts it.
+    environment["PYTEST_ADDOPTS"] = (environment.get("PYTEST_ADDOPTS", "") + f" --junitxml={directory / 'junit.xml'}").strip()
     try:
         result = process.run(["/bin/sh", "-c", test], cwd=worktree, env=environment, timeout=3600)
     except (OSError, subprocess.TimeoutExpired) as error:

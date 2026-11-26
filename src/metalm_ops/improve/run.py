@@ -12,6 +12,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -22,7 +23,7 @@ from typing import Iterator
 
 from metalm_ops import status as health
 from metalm_ops.config import Config, ImproveRepo, Repo
-from metalm_ops.improve import agents, brake, cadence, gates, lenses, process, store
+from metalm_ops.improve import agents, brake, cadence, gates, lenses, process, signals, store
 
 GUIDELINES_DIR = Path("~/.claude/metalm/guidelines")
 SLEEP = time.sleep
@@ -249,6 +250,41 @@ def labels(config: Config, *, repo: str | None = None, dry_run: bool = False, in
     return {"rows": rows, "ok": all(row["ok"] for row in rows), "next": "metalm-ops doctor"}
 
 
+def signals_board(config: Config, *, repo: str | None = None, now: datetime | None = None) -> dict:
+    """Measure each opted-in repo at origin/main in a throwaway worktree; never calls a model."""
+    now = now or NOW()
+    repositories = []
+    for selected, repository in _selected(config, repo):
+        folder = config.state_dir / "improve" / "worktrees" / f"{repository.name}-signals-{uuid.uuid4().hex[:8]}"
+        entry = {"name": selected.name, "files": 0, "counts": {}, "errors": [], "findings": []}
+        try:
+            _command(["git", "-C", str(repository.path), "fetch", "origin"])
+            folder.parent.mkdir(parents=True, exist_ok=True)
+            _command(["git", "-C", str(repository.path), "worktree", "add", "--detach", str(folder), "origin/main"])
+            try:
+                report = signals.measure(
+                    folder,
+                    ruff_bin=RUFF_BIN,
+                    excludes=(*gates.EXCLUDES, *selected.exclude),
+                    thresholds=selected.thresholds,
+                    junit=_junit(config, repository.name),
+                    now=now,
+                )
+            finally:
+                _command(["git", "-C", str(repository.path), "worktree", "remove", "--force", str(folder)])
+            counts: dict[str, int] = {}
+            for item in report["findings"]:
+                counts[item["signal"]] = counts.get(item["signal"], 0) + 1
+            ranked = sorted(
+                report["findings"], key=lambda item: (item["signal"] == "churn", -(item["value"] / item["threshold"] if item["threshold"] else item["value"]))
+            )
+            entry.update(files=report["files"], counts=counts, errors=report["errors"], findings=ranked[:10])
+        except Exception as error:
+            entry["errors"] = [{"signal": "all", "error": str(error)[:300]}]
+        repositories.append(entry)
+    return {"repos": repositories, "ok": not any(item["errors"] for item in repositories), "next": "metalm-ops improve run --dry-run"}
+
+
 def status(config: Config, *, repo: str | None = None, now: datetime | None = None) -> dict:
     """Cadence, visible brake and ten recent runs, including a stable opt-out reply."""
     if repo is not None and (config.improve is None or not any(item.name == repo for item in config.improve.repos)):
@@ -324,7 +360,7 @@ def opening(config: Config, run_id: str) -> str:
     )
 
 
-def _body(config: Config, run_id: str, proposal: dict, measured: dict, repository: Repo, base: str) -> str:
+def _body(config: Config, run_id: str, proposal: dict, measured: dict, repository: Repo, base: str, target: dict | None = None, change: str = "") -> str:
     from urllib.parse import quote
 
     evidence = "\n\n".join(
@@ -334,7 +370,13 @@ def _body(config: Config, run_id: str, proposal: dict, measured: dict, repositor
     )
     measurement = f"## Measurement\n\n{proposal['measurement']}\n\n" if lenses.load(proposal["lens"]).needs_measurement else ""
     return (
-        opening(config, run_id) + f"## Lens\n\n{proposal['lens']}\n\n## Claim\n\n{proposal['claim']}\n\n## Evidence\n\n{evidence}\n\n{measurement}"
+        opening(config, run_id)
+        + (
+            f"## Finding\n\n{target['signal']}: {target['detail']} ({target['path']}:{target['start_line']}-{target['end_line']}). {change}\n\n"
+            if target
+            else ""
+        )
+        + f"## Lens\n\n{proposal['lens']}\n\n## Claim\n\n{proposal['claim']}\n\n## Evidence\n\n{evidence}\n\n{measurement}"
         f"## What\n\n{proposal['summary']}\n\nCategory: {proposal['category']}\n\n"
         f"## Why it is safe\n\n{proposal['why_safe']}\n\n"
         f"## Tests\n\nCommand: `{measured['test']}`\n\nResult: passed; worktree imports passed.\n\n{proposal['tests_run']}\n\n"
@@ -369,6 +411,69 @@ def _link_venv(repository: Repo, worktree: Path, directory: Path) -> None:
         exclude.parent.mkdir(parents=True, exist_ok=True)
         with exclude.open("a") as handle:
             handle.write("\n.venv\n")
+
+
+RUFF_BIN = Path(sys.executable).parent / "ruff"  # metalm's own pinned ruff (beside its interpreter) measures every repo the same way
+JUNIT_DIR = "junit"  # state_dir/improve/junit/<repo>.xml: timings from the last green gate run
+TARGET_LINES = 1500  # longer target files are truncated in the prompt; the proposer may read the rest
+
+
+def _junit(config: Config, repo: str) -> Path:
+    return config.state_dir / "improve" / JUNIT_DIR / f"{repo}.xml"
+
+
+def _keep_junit(config: Config, repo: str, directory: Path) -> None:
+    source = directory / "junit.xml"
+    if source.exists():
+        destination = _junit(config, repo)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+
+
+def recent_targets(config: Config, repo: str, now: datetime) -> set[str]:
+    """Findings not to retry: a PR in the last 30 days, or a proposer skip in the last 14."""
+    avoid = set()
+    for row in store.read_runs(config, repo, limit=1000000):
+        if not row.get("finding") or not row.get("finished"):
+            continue
+        finished = datetime.fromisoformat(row["finished"])
+        age = (now.replace(tzinfo=None) - finished.replace(tzinfo=None)).days
+        if (row.get("pr_url") and age < 30) or (row["outcome"] == "skipped" and age < 14):
+            avoid.add(row["finding"])
+    return avoid
+
+
+def _target_text(worktree: Path, paths: list[str]) -> str:
+    blocks = []
+    for path in paths:
+        try:
+            lines = (worktree / path).read_text().splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        shown = lines[:TARGET_LINES]
+        more = f"\n[... {len(lines) - TARGET_LINES} more lines; read the file if your change needs them]" if len(lines) > TARGET_LINES else ""
+        blocks.append(f'<file path="{path}">\n' + "\n".join(f"{number}: {line}" for number, line in enumerate(shown, 1)) + more + "\n</file>")
+    return "\n".join(blocks)
+
+
+def _test_files_command(repository: Repo, tests: list[str]) -> str:
+    if not tests:
+        return "no test files target this module; add a focused test file only if the lens calls for one"
+    python = repository.path / ".venv" / "bin" / "python"
+    arguments = ", ".join(repr(path) for path in tests)
+    return f"{python} -c \"import sys; sys.modules['readline'] = None; import pytest; sys.exit(pytest.main(['-q', {arguments}]))\""
+
+
+def tokens(jsonl: Path) -> dict:
+    """The proposer's token use from Codex's final turn.completed event."""
+    usage = {}
+    try:
+        for line in jsonl.read_text().splitlines():
+            if '"turn.completed"' in line:
+                usage = json.loads(line).get("usage") or usage
+    except (OSError, ValueError):
+        return {}
+    return {"tokens_in": usage.get("input_tokens"), "tokens_cached": usage.get("cached_input_tokens"), "tokens_out": usage.get("output_tokens")}
 
 
 def _prompt(name: str, values: dict) -> tuple[str, str]:
@@ -451,6 +556,19 @@ def _run_repo(
         mission = lenses.load(chosen)
         row.update(category=chosen, lens=chosen)
         base = _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip()
+        excludes = (*gates.EXCLUDES, *selected.exclude)
+        report = signals.measure(
+            worktree, ruff_bin=RUFF_BIN, excludes=excludes, thresholds=selected.thresholds, junit=_junit(config, repository.name), now=started
+        )
+        (directory / "signals.json").write_text(json.dumps(report, indent=2, default=str))
+        picked = signals.candidates(report, chosen, avoid=recent_targets(config, repository.name, started), seed=f"{repository.name}|{started:%Y-%m-%d}")
+        if not picked:
+            # Nothing measured for this lens: done for the weekly floor, and no Codex call spent looking.
+            row.update(outcome="skipped", reason=lenses.PROPOSER_SKIP + f"no measured finding for {chosen}")
+            return row
+        target = picked[0]
+        row["finding"] = target["fingerprint"]
+        target_paths = signals.target_files(report, target)
         index_md = (GUIDELINES_DIR.expanduser() / "index.md").read_text()
         auto_improve_md = (GUIDELINES_DIR.expanduser() / "auto-improve.md").read_text()
         claude_md = (worktree / "CLAUDE.md").read_text() if (worktree / "CLAUDE.md").is_file() else "No CLAUDE.md"
@@ -471,12 +589,23 @@ def _run_repo(
                 "index_md": index_md,
                 "auto_improve_md": auto_improve_md,
                 "history": _history(repository, directory),
+                "finding": json.dumps(
+                    {
+                        key: target[key]
+                        for key in ("signal", "metric", "value", "threshold", "path", "start_line", "end_line", "detail", "other")
+                        if key in target
+                    },
+                    indent=2,
+                ),
+                "target_files": _target_text(worktree, target_paths),
+                "test_files_command": _test_files_command(repository, [path for path in target_paths if signals.is_test(path)]),
             },
         )
         row["codex_calls"] += 1
         proposal = agents.call(
             config, run_id=run_id, repo=repository.name, role="propose", worktree=worktree, directory=directory, prompt=prompt, template=template
         )
+        row.update(tokens(directory / "propose.jsonl"))
         if proposal["skip"]:
             if proposal.get("limit"):
                 _record_limit(config, proposal["skip_reason"])
@@ -508,6 +637,12 @@ def _run_repo(
         if _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip() != base:
             raise gates.GateError("proposer created a commit; only Python may commit")
         measured = gates.check(settings, selected, repository, worktree, directory)
+        _keep_junit(config, repository.name, directory)
+        after = signals.measure(worktree, ruff_bin=RUFF_BIN, excludes=excludes, thresholds=selected.thresholds, junit=directory / "junit.xml", now=started)
+        better, change = signals.improved(target, after)
+        if not better:
+            raise gates.GateError(change)
+        row["finding_change"] = change
         row.update(
             diff_stat=measured["diff_stat"],
             gates={"tests": "passed", "imports": "passed", "files": len(measured["files"]), "changed_lines": measured["changed_lines"]},
@@ -531,7 +666,7 @@ def _run_repo(
         label_result = labels(config, repo=repository.name, include_metalm=False)
         if not label_result["ok"]:
             raise ImproveError(next(row["reason"] for row in label_result["rows"] if not row["ok"]))
-        body = _body(config, run_id, proposal, measured, repository, base)
+        body = _body(config, run_id, proposal, measured, repository, base, target, row.get("finding_change", ""))
         body_file = directory / "pr-body.md"
         body_file.write_text(body)
         output = _github(

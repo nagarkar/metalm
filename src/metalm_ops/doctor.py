@@ -102,6 +102,30 @@ def failed(findings: list[Finding]) -> bool:
     return any(f.required and not f.ok for f in findings)
 
 
+def _signals_check() -> Finding:
+    """metalm's own ruff and one signals pass over metalm itself, so a broken measuring tool shows here."""
+    from pathlib import Path
+
+    from metalm_ops.improve import run as improve_run
+    from metalm_ops.improve import signals
+    from metalm_ops.schedule import CHECKOUT
+
+    if not improve_run.RUFF_BIN.is_file():
+        return Finding("improve signals", False, f"no ruff at {improve_run.RUFF_BIN}", "reinstall metalm's .venv with its dev extras")
+    try:
+        report = signals.measure(Path(CHECKOUT), ruff_bin=improve_run.RUFF_BIN)
+    except Exception as error:
+        return Finding("improve signals", False, str(error)[:200], "metalm-ops improve signals --repo metalm")
+    if report["errors"]:
+        return Finding(
+            "improve signals",
+            False,
+            "; ".join(f"{item['signal']}: {item['error']}" for item in report["errors"])[:200],
+            "metalm-ops improve signals --repo metalm",
+        )
+    return Finding("improve signals", True, f"{len(report['findings'])} findings on metalm, every signal ran")
+
+
 def improve_checks(configuration: Config) -> list[Finding]:
     """Check the opt-in auto-improve dependencies without running either agent."""
     from metalm_ops.improve import agents, brake
@@ -128,7 +152,7 @@ def improve_checks(configuration: Config) -> list[Finding]:
         prompt_finding = Finding("improve lenses and prompts", True, "all packaged front matter parses")
     except (ValueError, OSError, ImproveError) as error:
         prompt_finding = Finding("improve lenses and prompts", False, str(error), "reinstall metalm from its main checkout")
-    findings = [prompt_finding]
+    findings = [prompt_finding, _signals_check()]
     codex = agents.codex_binary(settings)
     claude = agents.claude_binary(settings)
     for name, executable in (("codex_bin", codex), ("claude_bin", claude)):

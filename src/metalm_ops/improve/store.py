@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS step (
 """
 
 
+# Columns added after the first ledgers existed (nagarkar/metalm#97); initialize adds any that are missing.
+ADDED_COLUMNS = (("finding", "TEXT"), ("tokens_in", "INTEGER"), ("tokens_cached", "INTEGER"), ("tokens_out", "INTEGER"))
+
+
 def path(config: Config) -> Path:
     """The improvement ledger in this configuration's state directory."""
     return config.state_dir / "improve" / "runs.sqlite"
@@ -50,6 +54,10 @@ def initialize(config: Config) -> None:
     database.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(database)) as connection:
         connection.executescript(SCHEMA)
+        present = {row[1] for row in connection.execute("PRAGMA table_info(run)")}
+        for column, kind in ADDED_COLUMNS:
+            if column not in present:
+                connection.execute(f"ALTER TABLE run ADD COLUMN {column} {kind}")
         connection.commit()
 
 
@@ -69,6 +77,7 @@ def record_run(config: Config, row: dict) -> None:
         "codex_calls",
         "model",
         "checkout_updated",
+        *(column for column, _ in ADDED_COLUMNS),
     )
     with closing(sqlite3.connect(path(config))) as connection:
         connection.execute(f"INSERT INTO run ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", [row.get(column) for column in columns])

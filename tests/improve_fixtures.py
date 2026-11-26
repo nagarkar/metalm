@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from metalm_ops.config import parse
+from metalm_ops.improve import signals
 
 PROPOSAL = {
     "skip": False,
@@ -48,6 +49,33 @@ def git(path: Path, *arguments: str) -> str:
     environment = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
     result = subprocess.run(["git", "-C", str(path), *arguments], env=environment, capture_output=True, text=True, check=True)
     return result.stdout
+
+
+def canned_report() -> dict:
+    from metalm_ops.improve.lenses import NAMES
+
+    return {
+        "files": 1,
+        "tests": 1,
+        "errors": [],
+        "churned": [],
+        "tested_by": {"src/sample/__init__.py": []},
+        "findings": [
+            {
+                "signal": "size",
+                "lenses": list(NAMES),
+                "path": "src/sample/__init__.py",
+                "start_line": 1,
+                "end_line": 1,
+                "metric": "lines",
+                "value": 500,
+                "threshold": 400,
+                "detail": "fixture finding",
+                "symbol": "",
+                "fingerprint": "size:src/sample/__init__.py:",
+            }
+        ],
+    }
 
 
 class World:
@@ -109,6 +137,12 @@ class World:
         monkeypatch.setattr(run, "GUIDELINES_DIR", guidelines)
         monkeypatch.setattr(run, "SLEEP", self.sleeps.append)
         monkeypatch.setattr(process, "RUNNER", self.command)
+        # Signals are measured for real in test_ops_improve_signals.py; here a canned finding for every lens
+        # (before) and none (after) let run tests exercise the proposal flow.
+        self.report = canned_report()
+        self.after_report = {**canned_report(), "findings": []}
+        self.measures: dict[str, int] = {}
+        monkeypatch.setattr(signals, "measure", self.measure)
         rows = []
         for name in names:
             repository = root / name
@@ -188,6 +222,11 @@ class World:
     def default_edit(worktree: Path) -> None:
         path = worktree / "src" / "sample" / "__init__.py"
         path.write_text(path.read_text().replace("# Add the pair.", "# Return the sum of two numbers."))
+
+    def measure(self, root, **options):
+        count = self.measures.get(str(root), 0)
+        self.measures[str(root)] = count + 1
+        return self.report if count == 0 else self.after_report
 
     def completed(self, arguments, code=0, output="", error=""):
         return subprocess.CompletedProcess(arguments, code, output, error)

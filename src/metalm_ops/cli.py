@@ -25,6 +25,10 @@ LEAVES = {
         "metalm-ops improve run --dry-run",
     ),
     ("improve", "status"): ("Show cadence, brakes and the last ten improvement runs; --repo narrows the session check.", "metalm-ops improve status"),
+    ("improve", "signals"): (
+        "Measure each opted-in repo's code health (size, complexity, coupling, duplication, security, docs, tests, churn); no model.",
+        "metalm-ops improve signals --repo computerlm",
+    ),
     ("improve", "labels"): ("Create or update the six auto-improve labels in each opted-in repo.", "metalm-ops improve labels --repo marketlm"),
     ("improve", "unbrake"): (
         "Open a brake removal PR quoting the owner; never merge it.",
@@ -81,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
             leaf.add_argument("--dry-run", action="store_true", help="say what would happen; write and send nothing")
         if (group, verb) == ("backup", "offsite"):
             leaf.add_argument("--check", action="store_true", help="run the restic subset check even if one ran this week")
-        if group == "improve" and verb in {"run", "labels", "status", "unbrake"}:
+        if group == "improve" and verb in {"run", "labels", "status", "unbrake", "signals"}:
             leaf.add_argument("--repo", required=verb == "unbrake", help="only this repository")
         if (group, verb) == ("improve", "unbrake"):
             leaf.add_argument("--why", required=True, help="the owner’s words authorizing resume")
@@ -165,6 +169,8 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
             board = improve.run(cfg, repo=args.repo, dry_run=args.dry_run, no_pr=args.no_pr, lens=args.lens)
         elif leaf[1] == "labels":
             board = improve.labels(cfg, repo=args.repo, dry_run=args.dry_run)
+        elif leaf[1] == "signals":
+            board = improve.signals_board(cfg, repo=args.repo)
         elif leaf[1] == "unbrake":
             from metalm_ops.improve import brake
 
@@ -173,6 +179,15 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
             board = improve.status(cfg, repo=args.repo)
         lines = []
         for repository in board.get("repos", []):
+            if "findings" in repository:
+                counts = ", ".join(f"{name}={count}" for name, count in repository["counts"].items())
+                lines.append(
+                    f"{repository['name']}: {repository['files']} files; {counts}" + (f"; errors: {repository['errors']}" if repository["errors"] else "")
+                )
+                lines.extend(
+                    f"  {item['signal']:<11} {item['lenses'][0]:<18} {item['path']}:{item['start_line']} {item['detail']}" for item in repository["findings"]
+                )
+                continue
             lines.append(
                 f"{repository['name']}: {'braked' if repository.get('brake') else 'not braked'} "
                 + " ".join(f"{key}={repository.get(key, '')}" for key in ("D", "T", "today", "overdue"))
@@ -187,6 +202,10 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
                 lines.append(" ".join(f"{key}={row.get(key, '')}" for key in ("D", "T", "today", "overdue", "due")))
             if row.get("diff_stat"):
                 lines.append(row["diff_stat"])
+            if row.get("finding"):
+                lines.append(
+                    f"finding: {row['finding']}; proposer tokens in={row.get('tokens_in')} cached={row.get('tokens_cached')} out={row.get('tokens_out')}"
+                )
             if row.get("brake_error"):
                 lines.append("brake failed: " + row["brake_error"])
             if row.get("gates"):

@@ -197,6 +197,9 @@ def collect(cfg: Config, *, now: datetime | None = None) -> dict:
     rows_md = conformance(REPOS_MD.read_text()) if REPOS_MD.exists() else {}
 
     jobs = [agent(cfg.backup_label), agent(cfg.serve_label)]
+    improve_agent = agent(cfg.improve_label) if cfg.improve is not None else None
+    if improve_agent:
+        jobs.append(improve_agent)
     local_runs = [r for r in runs if r.get("kind") == "local"]
     if local_runs and not local_runs[-1]["ok"]:
         failed = [f"{i['repo']}/{i['name']}: {i['detail']}" for i in local_runs[-1]["items"] if not i["ok"]]
@@ -228,6 +231,8 @@ def collect(cfg: Config, *, now: datetime | None = None) -> dict:
             status = rows_md.get(name, "not listed")
             ok = status in {"compliant", "adopted"}
             rows.append(Check("metalm row", GREEN if ok else AMBER, status if ok else f"docs/repos.md says {status}; green needs compliant or adopted"))
+        if cfg.improve is not None and any(selected.name == name for selected in cfg.improve.repos):
+            rows.append(improve_row(cfg, name, now, loaded=improve_agent.level != RED))
         repos.append({"name": name, "level": worst(rows), "checks": [asdict(c) for c in rows]})
     every = jobs + [Check(c["check"], c["level"], c["detail"]) for r in repos for c in r["checks"]]
     return {"generated": now.isoformat(), "level": worst(every), "jobs": [asdict(c) for c in jobs], "repos": repos}
@@ -252,3 +257,22 @@ def save(cfg: Config, status: dict) -> Path:
     tmp.write_text(json.dumps(status, indent=1, sort_keys=True))
     tmp.replace(path)
     return path
+
+
+def improve_row(configuration: Config, repository: str, now: datetime, *, loaded: bool) -> Check:
+    """Report missed or failed improvement runs without creating the ledger."""
+    from metalm_ops.improve import store
+
+    directory = configuration.state_dir / "improve"
+    if (directory / "PAUSE").exists() or (directory / f"paused-{repository}").exists() or not configuration.improve.enabled:
+        return Check("auto-improve", AMBER, "paused")
+    runs = store.read_runs(configuration, repo=repository, limit=1)
+    if not runs:
+        return Check("auto-improve", AMBER, "no run yet")
+    latest = runs[0]
+    age = now - datetime.fromisoformat(latest["finished"])
+    if latest["outcome"] == "failed":
+        return Check("auto-improve", RED, f"last run failed: {latest['reason']}")
+    if age > timedelta(hours=36):
+        return Check("auto-improve", RED if loaded else AMBER, f"last run {_age_text(age)}; expected within 36 h")
+    return Check("auto-improve", GREEN, f"{latest['outcome']}: {_age_text(age)}")

@@ -5,7 +5,10 @@ The nightly job runs it first, so a missing piece reaches that night's alert.
 
 from __future__ import annotations
 
+import json
+import plistlib
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -66,7 +69,15 @@ def check(cfg: Config) -> list[Finding]:
     out.append(Finding("superlm-notify", notifier.exists(), str(notifier), "run metalm's ./install.sh"))
     for job in schedule.JOBS:
         row = status.agent(schedule.label(cfg, job))
-        out.append(Finding(f"agent {schedule.label(cfg, job)}", row.level != status.RED, row.detail, schedule.install_command(cfg, job)))
+        out.append(
+            Finding(
+                f"agent {schedule.label(cfg, job)}",
+                row.level != status.RED,
+                row.detail,
+                schedule.install_command(cfg, job),
+                required=job != "improve" or cfg.improve is not None,
+            )
+        )
     when = schedule.start_time(schedule.installed_path(cfg, "backup"))
     if when:
         _, sched = status._run(["/usr/bin/pmset", "-g", "sched"])
@@ -83,8 +94,76 @@ def check(cfg: Config) -> list[Finding]:
     out.append(
         Finding("dashboard /health", served.level == status.GREEN, served.detail, f"launchctl kickstart -k gui/$(id -u)/{cfg.serve_label}", required=False)
     )
+    out.extend(improve_checks(cfg))
     return out
 
 
 def failed(findings: list[Finding]) -> bool:
     return any(f.required and not f.ok for f in findings)
+
+
+def improve_checks(configuration: Config) -> list[Finding]:
+    """Check the opt-in auto-improve dependencies without running either agent."""
+    from metalm_ops.improve import agents
+    from metalm_ops.improve.run import LABELS
+
+    settings = configuration.improve
+    if settings is None:
+        return [Finding("auto-improve", True, "not configured; disabled", required=False)]
+    findings = []
+    codex = agents.codex_binary(settings)
+    claude = agents.claude_binary(settings)
+    for name, executable in (("codex_bin", codex), ("claude_bin", claude)):
+        exists = Path(executable).is_file() or shutil.which(executable) is not None
+        findings.append(Finding(f"improve {name}", exists, executable, f"set [improve] {name} in ops.toml to the installed executable"))
+    code, output = status._run([codex, "login", "status"])
+    findings.append(
+        Finding("improve Codex login", code == 0 and "Logged in" in output, "logged in" if "Logged in" in output else "not logged in", f"{codex} login")
+    )
+    code, output = status._run([status.gh(), "auth", "status"])
+    findings.append(Finding("improve GitHub auth", code == 0, "authenticated" if code == 0 else status._first_line(output), "gh auth login"))
+    repositories = {repository.name: repository for repository in configuration.repos}
+    for selected in settings.repos:
+        repository = repositories.get(selected.name)
+        findings.append(
+            Finding(
+                f"improve {selected.name} repo",
+                repository is not None,
+                "configured" if repository else "missing [[repo]] row",
+                "add the matching [[repo]] row in ops.toml",
+            )
+        )
+        if repository is None:
+            continue
+        for name, path in (("path", repository.path), ("venv", repository.path / ".venv")):
+            findings.append(Finding(f"improve {selected.name} {name}", path.is_dir(), str(path), f"set up {repository.path} and its .venv"))
+        code, output = status._run([status.gh(), "label", "list", "--repo", repository.github, "--limit", "1000", "--json", "name"])
+        try:
+            present = {row["name"] for row in json.loads(output)} if code == 0 else set()
+        except (json.JSONDecodeError, TypeError, KeyError):
+            present = set()
+        missing = [name for name, _, _ in LABELS if name not in present]
+        findings.append(
+            Finding(
+                f"improve {selected.name} labels",
+                not missing,
+                "all five labels present" if not missing else "missing: " + ", ".join(missing),
+                f"metalm-ops improve labels --repo {selected.name}",
+            )
+        )
+    when = schedule.start_time(schedule.installed_path(configuration, "improve"))
+    if when is None:
+        interval = plistlib.loads(schedule.render(configuration, "improve").encode())["StartCalendarInterval"]
+        when = interval["Hour"], interval.get("Minute", 0)
+    code, output = status._run(["/usr/bin/pmset", "-g", "sched"])
+    daily = "\n".join(line for line in output.splitlines() if "every day" in line.lower())
+    before = (when[0] * 60 + when[1] - 10) % 1440
+    findings.append(
+        Finding(
+            "daily wake before improve",
+            code == 0 and wake_covers(when, wake_times(daily)),
+            f"improve at {when[0]:02d}:{when[1]:02d}",
+            f"sudo pmset repeat wakeorpoweron MTWRFSU {before // 60:02d}:{before % 60:02d}:00",
+        )
+    )
+    return findings

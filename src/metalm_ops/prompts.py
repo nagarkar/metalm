@@ -9,6 +9,9 @@ a main checkout's branch.
 
 from __future__ import annotations
 
+import hashlib
+from importlib import resources
+
 BACKUPS = "metalm"  # the Backups card's checks are fixed in metalm
 
 
@@ -55,3 +58,26 @@ def fix_prompt(repo: str, check: str, detail: str) -> str:
     else:
         what = "Find why and propose the fix."
     return f"In {target}: {seen} {what} Work in a worktree, never on the main checkout; open a PR and merge only as the repo's merge rule allows (metalm guidelines/index.md; the repo skill's `## Merging`); otherwise leave merging to me."
+
+
+def inventory() -> list[dict]:
+    """Versioned auto-improve prompts with their declared schema and content hash."""
+    directory = resources.files("metalm_ops.improve").joinpath("prompts")
+    rows = []
+    for path in sorted(directory.iterdir(), key=lambda item: item.name):
+        if path.name.endswith(".md"):
+            text = path.read_text()
+            if not text.startswith("---\n"):
+                raise ValueError(f"{path.name}: missing prompt front matter")
+            header = text.split("---", 2)[1]
+            metadata = dict(line.split(":", 1) for line in header.splitlines() if ":" in line)
+            rows.append(
+                {
+                    "id": metadata["id"].strip(),
+                    "version": int(metadata["version"].strip()),
+                    "output_schema": metadata["output_schema"].strip(),
+                    "sha256": hashlib.sha256(text.encode()).hexdigest(),
+                    "file": path.name,
+                }
+            )
+    return rows

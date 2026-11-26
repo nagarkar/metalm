@@ -13,11 +13,11 @@ from pathlib import Path
 from metalm_ops.config import Config
 
 CHECKOUT = Path(__file__).resolve().parents[2]
-JOBS = ("backup", "serve")
+JOBS = ("backup", "serve", "improve")
 
 
 def label(cfg: Config, job: str) -> str:
-    return cfg.backup_label if job == "backup" else cfg.serve_label
+    return {"backup": cfg.backup_label, "serve": cfg.serve_label, "improve": cfg.improve_label}[job]
 
 
 def render(cfg: Config, job: str, checkout: Path = CHECKOUT) -> str:

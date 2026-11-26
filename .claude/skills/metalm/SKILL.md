@@ -16,7 +16,7 @@ A change here reaches every repo that imports `guidelines/index.md` on its next 
 - `tools/notifier/make_brand.py --app <repo>`: an app's icons and wordmarks into `brand/<repo>/` (needs the `brand` extra: Pillow).
 - `docs/repos.md`: which repos import metalm and how each last checked out; `metalm-setup` phase 8 writes it.
 
-## Ops: backups and the dashboard
+## Ops: backups, auto-improve and the dashboard
 
 `metalm-ops` (package `metalm_ops`) backs up every listed database and serves one health page for all repos. What it watches is `ops.toml` in the main checkout (read as `~/.claude/metalm/ops.toml`), gitignored; `ops.example.toml` shows the shape. The dashboard's ports are in the served-apps table in `~/.claude/CLAUDE.md`.
 
@@ -28,7 +28,17 @@ A change here reaches every repo that imports `guidelines/index.md` on its next 
 - `metalm-ops deploy [--dry-run]`: after a metalm-ops PR merges, pulls main into the main checkout (only a clean checkout on `main`), restarts the dashboard through its agent, waits for /health and collects once.
 - `metalm-ops discover`: read-only list of SQLite files in the places below, `NEW` where ops.toml does not list one yet.
 - `metalm-ops doctor`: setup steps no code installs, each with its fix; the nightly job runs it first.
-- `metalm-ops schedule print backup|serve`: the launch agent plist to install; stderr prints the install command for the owner.
+- `metalm-ops schedule print backup|serve|improve`: the launch agent plist to install; stderr prints the install command for the owner.
+- `metalm-ops improve run [--repo NAME] [--dry-run | --no-pr]`: one Codex proposal and two independent Claude reviews per opted-in repo; Python merges only after both approve and CI is green. `--dry-run` previews skips, caps and usage without models or writes; `--no-pr` runs the proposer and gates, then discards without a commit or PR. Review calls can incur cost.
+- `metalm-ops improve status`: the last seven runs per opted-in repo, PR links, reasons and pause state.
+- `metalm-ops improve labels [--repo NAME] [--dry-run]`: creates or updates the five system labels before the first live run.
+- `metalm-ops prompts [--json]`: lists the versioned proposer and reviewer prompts, schemas and hashes.
+- `scripts/nightly-improve.sh`: the 01:30 job (doctor, improve run); one failure-only banner, logs retained 30 days.
+
+Pause all runs: create `<state_dir>/improve/PAUSE`, or set `[improve] enabled = false` in the global `~/.claude/metalm/ops.toml` (default true when the table exists; absent means off).
+Unpause one repo after three rejected PRs: delete `<state_dir>/improve/paused-<repo>` after reviewing its history.
+Run artifacts are in `<state_dir>/improve/runs/<run_id>/<repo>/`; the run and call ledger is `<state_dir>/improve/runs.sqlite`. Global `state_dir` defaults to `~/.local/state/metalm/ops` in `~/.claude/metalm/ops.toml`.
+
 - `metalm-ops help [verb]`, `metalm-ops completion`.
 - `scripts/nightly-backup.sh`: the 03:30 job (doctor, backup run, backup offsite, status --alert); silent when clean.
 

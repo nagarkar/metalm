@@ -352,10 +352,10 @@ def test_ci_absent_failed_and_timeout(world, checks, expected):
     "answer",
     ["not json", {}, {**PROPOSAL, "extra": "wrong"}, {**PROPOSAL, "skip": "false"}, {**PROPOSAL, "title": "x" * 73}, {**PROPOSAL, "category": "feature"}],
 )
-def test_invalid_proposal_skips_once(world, answer):
+def test_invalid_proposal_fails_once(world, answer):
     world.proposal = answer
     _, row = result(world)
-    assert row["outcome"] == "skipped" and row["reason"]
+    assert row["outcome"] == "failed" and row["reason"]
     assert len(world.prompts) == 1 and not world.bodies
     assert len(world.ledger("call")) == 1
     world.assert_cleaned()
@@ -391,7 +391,7 @@ def test_proposer_skip_is_recorded_without_pr(world):
     assert not world.bodies
 
 
-@pytest.mark.parametrize("role, expected", [("propose", "skipped"), ("review", "rejected")])
+@pytest.mark.parametrize("role, expected", [("propose", "failed"), ("review", "rejected")])
 def test_agent_timeouts_are_recorded_and_do_not_escape(world, role, expected):
     if role == "propose":
         world.proposal_error = subprocess.TimeoutExpired("codex", 1200)
@@ -885,3 +885,37 @@ def test_worktree_gets_the_repo_venv_as_an_ignored_symlink(world):
     row = result(world, no_pr=True)[1]
     assert seen["link"] and ".venv" not in seen["status"]
     assert row["outcome"] == "no-pr" and ".venv" not in row["diff_stat"]
+
+
+LIMIT_JSONL = (
+    '{"type":"turn.started"}\n'
+    '{"type":"error","message":"You\u2019ve hit your usage limit. Visit https://chatgpt.com/settings/usage to purchase more credits or try again at Nov 28th, 2026 8:03 PM."}\n'
+)
+
+
+def test_a_proposer_that_cannot_run_is_a_failure_not_found_nothing(world):
+    world.proposal_exit = (1, '{"type":"turn.failed"}\n')
+    _, row = result(world)
+    assert row["outcome"] == "failed" and row["reason"] == "propose failed: proposer exited 1"
+    assert not row["reason"].startswith("proposer found nothing")
+
+
+def test_codex_usage_limit_pauses_every_repo_until_reset_without_braking(tmp_path, monkeypatch):
+    from improve_fixtures import World
+
+    world = World(tmp_path, monkeypatch, names=("alm", "blm"))
+    world.proposal_exit = (1, LIMIT_JSONL)
+    board = run.run(world.config)
+    first, second = board["rows"]
+    assert first["outcome"] == "failed" and first["reason"].startswith("system: Codex usage limit:")
+    assert second["outcome"] == "skipped" and second["reason"].startswith("system: Codex usage limit until 2026-11-28T20:03")
+    assert sum(role == "propose" for role, _, _ in world.prompts) == 1
+    assert not board["ok"]
+
+
+def test_limit_reset_time_is_read_from_codex_and_falls_back_to_a_back_off():
+    from datetime import datetime, timedelta
+
+    now = datetime(2026, 11, 26, 9, 41)
+    assert run.limit_until("try again at Nov 28th, 2026 8:03 PM.", now) == datetime(2026, 11, 28, 20, 3)
+    assert run.limit_until("try again later", now) == now + timedelta(hours=6)

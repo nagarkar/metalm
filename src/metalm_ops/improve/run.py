@@ -22,16 +22,24 @@ from typing import Iterator
 
 from metalm_ops import status as health
 from metalm_ops.config import Config, ImproveRepo, Repo
-from metalm_ops.improve import agents, gates, lenses, process, store
+from metalm_ops.improve import agents, brake, cadence, gates, lenses, process, store
 
 GUIDELINES_DIR = Path("~/.claude/metalm/guidelines")
 SLEEP = time.sleep
+
+
+def NOW() -> datetime:
+    """Local clock seam for deterministic scheduling tests."""
+    return datetime.now().astimezone()
+
+
 LABELS = (
     ("auto-improve", "5319E7", "Opened by the daily auto-improve system (metalm-ops improve)"),
     ("codex-automated", "10A37F", "Written by OpenAI Codex, reviewed by Claude; no human in the loop"),
     ("auto-improve-rejected", "B60205", "Auto-improve PR closed by its reviewers, CI or gates"),
     ("auto-improve-checked", "C2E0C6", "A Claude session checked this merged auto-improve PR"),
     ("auto-improve-flagged", "FBCA04", "A Claude session flagged this auto-improve PR as risky"),
+    ("auto-improve-brake", "B60205", "A visible auto-improve brake or owner-authorized resume"),
 )
 
 
@@ -123,6 +131,9 @@ def _lock(config: Config) -> Iterator[None]:
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
+REVIEW_RESERVE_USD = 0.60  # three judge calls at the observed ~$0.15-0.20 each
+
+
 def _cap(config: Config, *, reviews_only: bool = False) -> str:
     settings = config.improve
     if settings is None:
@@ -132,6 +143,9 @@ def _cap(config: Config, *, reviews_only: bool = False) -> str:
         return "daily cap reached (Codex calls)"
     if usage["review_cost_usd"] >= settings.max_review_cost_usd_per_day:
         return "daily cap reached (Claude review cost)"
+    if not reviews_only and usage["review_cost_usd"] + REVIEW_RESERVE_USD > settings.max_review_cost_usd_per_day:
+        # Start a proposal only when the budget covers all three judges, so no PR is closed for lack of budget.
+        return "daily cap reached (Claude review cost, reserve for three judges)"
     return ""
 
 
@@ -142,8 +156,6 @@ def _skip(config: Config, repository: Repo, *, dry_run: bool = False, directory:
     folder = config.state_dir / "improve"
     if (folder / "PAUSE").exists():
         return "system PAUSE file exists"
-    if (folder / f"paused-{repository.name}").exists():
-        return "repo is paused; delete paused-" + repository.name + " to resume"
     cap = _cap(config)
     if cap:
         return cap
@@ -152,16 +164,6 @@ def _skip(config: Config, repository: Repo, *, dry_run: bool = False, directory:
     )
     if opened:
         return "an open auto-improve PR exists"
-    history = json.loads(
-        _github(repository, "pr", "list", "--label", "auto-improve", "--state", "all", "--limit", "3", "--json", "number,state", directory=directory)
-    )
-    if len(history) == 3 and all(item["state"] == "CLOSED" for item in history):
-        fingerprint = ",".join(str(item["number"]) for item in history)
-        if not store.pause_seen(config, repository.name, fingerprint):
-            if not dry_run:
-                (folder / f"paused-{repository.name}").write_text(f"three PRs in a row rejected: {fingerprint}\n")
-                store.record_pause(config, repository.name, fingerprint)
-            return "last three auto-improve PRs were closed unmerged"
     return ""
 
 
@@ -192,37 +194,70 @@ def _history(repository: Repo, directory: Path) -> str:
     return json.dumps(history, ensure_ascii=False)
 
 
-def labels(config: Config, *, repo: str | None = None, dry_run: bool = False) -> dict:
-    """Create or update the five attribution and review labels in opted-in repos."""
+def labels(config: Config, *, repo: str | None = None, dry_run: bool = False, include_metalm: bool = True) -> dict:
+    """Create or update the six attribution and review labels in opted-in repos (and metalm, for brake PRs)."""
     rows = []
-    for _, repository in _selected(config, repo):
+    repositories = [repository for _, repository in _selected(config, repo)]
+    metalm = brake.repository(config)
+    if include_metalm and all(repository.github != metalm.github for repository in repositories):
+        repositories.append(metalm)
+    for repository in repositories:
         if dry_run:
-            rows.append({"repo": repository.name, "ok": True, "reason": "would create or update five labels"})
+            rows.append({"repo": repository.name, "ok": True, "reason": "would create or update six labels"})
             continue
         try:
             for name, colour, description in LABELS:
                 _github(repository, "label", "create", name, "--force", "--color", colour, "--description", description)
-            rows.append({"repo": repository.name, "ok": True, "reason": "five labels created or updated"})
+            rows.append({"repo": repository.name, "ok": True, "reason": "six labels created or updated"})
         except (ImproveError, OSError, subprocess.TimeoutExpired) as error:
             rows.append({"repo": repository.name, "ok": False, "reason": str(error)})
     return {"rows": rows, "ok": all(row["ok"] for row in rows), "next": "metalm-ops doctor"}
 
 
-def status(config: Config) -> dict:
-    """Last seven outcomes per opted-in repo, including pause state and usage."""
+def status(config: Config, *, repo: str | None = None, now: datetime | None = None) -> dict:
+    """Cadence, visible brake and ten recent runs, including a stable opt-out reply."""
+    if repo is not None and (config.improve is None or not any(item.name == repo for item in config.improve.repos)):
+        return {"opted_in": False}
+    now = now or NOW()
     repositories, rows = [], []
-    for selected, _ in _selected(config, None):
-        recent = store.read_runs(config, selected.name)
-        for row in recent:
-            row["lens"] = lenses.OLD_NAMES.get(row.get("category"), row.get("category"))
-        paused = (
-            not config.improve.enabled
-            or (config.state_dir / "improve" / "PAUSE").exists()
-            or (config.state_dir / "improve" / f"paused-{selected.name}").exists()
-        )
-        repositories.append({"name": selected.name, "paused": paused, "runs": recent})
+    brake_error = ""
+    try:
+        entries = {entry["repo"]: entry for entry in brake.read(config)} if config.improve else {}
+    except Exception as error:  # offline: still answer the session-start check with JSON
+        entries, brake_error = {}, f"could not read improve/braked.toml: {error}"
+    for selected, repository in _selected(config, repo):
+        history = store.read_runs(config, selected.name, limit=1000000)
+        recent = history[:10]
+        last_pr = next((row for row in history if row.get("pr_url")), None)
+        try:
+            board = cadence.plan(config, selected, repository, now)
+        except Exception as error:
+            board = {"repo": selected.name, "D": None, "T": None, "today": None, "overdue": [], "lens": None, "due": False, "reason": str(error), "error": True}
+        entry = entries.get(selected.name)
+        if entry:
+            entry = {**entry, "pr": brake.lookup(config, selected.name)}
+        paused = bool(entry or not config.improve.enabled or (config.state_dir / "improve" / "PAUSE").exists())
+        if paused:
+            board.update(due=False, reason=brake.reason(entry) if entry else "system paused")
+        repositories.append({**board, "name": selected.name, "paused": paused, "brake": entry, "runs": recent, "last_pr": last_pr})
         rows.extend(recent)
-    return {"repos": repositories, "rows": rows, "usage": store.usage(config), "ok": True, "next": "metalm-ops improve run --dry-run"}
+    board = {
+        "opted_in": True,
+        "repos": repositories,
+        "rows": rows,
+        "usage": store.usage(config),
+        "ok": not brake_error and not any(item.get("error") for item in repositories),
+        "brake_error": brake_error,
+        "next": "metalm-ops improve run --dry-run",
+    }
+    if repo is not None:
+        board.update(repositories[0])
+    return board
+
+
+def unbrake(config: Config, *, repo: str, why: str, dry_run: bool = False) -> dict:
+    """Open a resume PR quoting the owner's words; never merge it."""
+    return brake.unbrake(config, repo, why, dry_run=dry_run)
 
 
 def decision(senior: dict, boundaries: dict, category: str, verifier: dict | None = None) -> str:
@@ -243,10 +278,19 @@ def decision(senior: dict, boundaries: dict, category: str, verifier: dict | Non
     return ""
 
 
+def opening(config: Config, run_id: str) -> str:
+    """Shared attribution for improvement and safety-brake pull requests."""
+    settings = config.improve
+    return (
+        f"> **Opened by the auto-improve system:** OpenAI Codex (`codex exec`, model {settings.model}, effort {settings.effort}), "
+        f"run by `metalm-ops improve` on the owner's Mac, run `{run_id}`.\n"
+        "> **Why:** one small improvement per run under metalm `guidelines/auto-improve.md`.\n\n"
+    )
+
+
 def _body(config: Config, run_id: str, proposal: dict, measured: dict, repository: Repo, base: str) -> str:
     from urllib.parse import quote
 
-    settings = config.improve
     evidence = "\n\n".join(
         f"[{item['path']}:{item['start_line']}-{item['end_line']}](https://github.com/{repository.github}/blob/{base}/{quote(item['path'], safe='/')}#L{item['start_line']}-L{item['end_line']})\n\n"
         + "\n".join("> " + line for line in item["quote"].splitlines())
@@ -254,11 +298,7 @@ def _body(config: Config, run_id: str, proposal: dict, measured: dict, repositor
     )
     measurement = f"## Measurement\n\n{proposal['measurement']}\n\n" if lenses.load(proposal["lens"]).needs_measurement else ""
     return (
-        f"> **Opened by the auto-improve system:** OpenAI Codex (`codex exec`, model {settings.model}, effort {settings.effort}), "
-        f"run by `metalm-ops improve` on the owner's Mac, run `{run_id}`.\n"
-        "> **Why:** one small daily improvement per repo, under metalm `guidelines/auto-improve.md`. Two Claude reviewers "
-        "(Anthropic, a different provider from the writer) judge it next. It merges only if both approve and CI is green; otherwise it is closed.\n\n"
-        f"## Lens\n\n{proposal['lens']}\n\n## Claim\n\n{proposal['claim']}\n\n## Evidence\n\n{evidence}\n\n{measurement}"
+        opening(config, run_id) + f"## Lens\n\n{proposal['lens']}\n\n## Claim\n\n{proposal['claim']}\n\n## Evidence\n\n{evidence}\n\n{measurement}"
         f"## What\n\n{proposal['summary']}\n\nCategory: {proposal['category']}\n\n"
         f"## Why it is safe\n\n{proposal['why_safe']}\n\n"
         f"## Tests\n\nCommand: `{measured['test']}`\n\nResult: passed; worktree imports passed.\n\n{proposal['tests_run']}\n\n"
@@ -316,10 +356,12 @@ def _update(repository: Repo, selected: ImproveRepo, directory: Path) -> tuple[b
     return True, "merged; checkout updated" + (" and deployed" if selected.deploy else "")
 
 
-def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: str, no_pr: bool, forced_lens: str | None = None) -> dict:
+def _run_repo(
+    config: Config, selected: ImproveRepo, repository: Repo, run_id: str, no_pr: bool, forced_lens: str | None = None, now: datetime | None = None
+) -> dict:
     settings = config.improve
     assert settings is not None
-    started = datetime.now().astimezone()
+    started = now or NOW()
     directory = config.state_dir / "improve" / "runs" / run_id / repository.name
     row = {
         "run_id": run_id,
@@ -329,7 +371,8 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
         "outcome": "failed",
         "pr_number": None,
         "pr_url": None,
-        "category": None,
+        "category": forced_lens,
+        "lens": forced_lens,
         "title": None,
         "reason": "",
         "codex_calls": 0,
@@ -399,7 +442,7 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
             config, run_id=run_id, repo=repository.name, role="propose", worktree=worktree, directory=directory, prompt=prompt, template=template
         )
         if proposal["skip"]:
-            row.update(outcome="skipped", reason=proposal["skip_reason"])
+            row.update(outcome="skipped", reason=lenses.PROPOSER_SKIP + proposal["skip_reason"])
             return row
         if proposal["lens"] != chosen or proposal["category"] != chosen:
             raise gates.GateError(f"proposal must use selected lens {chosen}")
@@ -443,9 +486,9 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
             raise gates.GateError("pre-commit left uncommitted changes")
         head = _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip()
         _command(["git", "push", "-u", "origin", branch], cwd=worktree, directory=directory)
-        label_result = labels(config, repo=repository.name)
+        label_result = labels(config, repo=repository.name, include_metalm=False)
         if not label_result["ok"]:
-            raise ImproveError(label_result["rows"][0]["reason"])
+            raise ImproveError(next(row["reason"] for row in label_result["rows"] if not row["ok"]))
         body = _body(config, run_id, proposal, measured, repository, base)
         body_file = directory / "pr-body.md"
         body_file.write_text(body)
@@ -592,7 +635,7 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
                     _command(["git", "-C", str(repository.path), "branch", "-D", branch], directory=directory)
         except Exception as error:
             row.update(outcome="failed", reason=f"{row['reason']}; branch cleanup failed: {error}")
-        row["finished"] = datetime.now().astimezone().isoformat()
+        row["finished"] = (now or NOW()).isoformat()
         try:
             (directory / "result.json").write_text(json.dumps(row, indent=2))
         except OSError as error:
@@ -600,45 +643,176 @@ def _run_repo(config: Config, selected: ImproveRepo, repository: Repo, run_id: s
         store.record_run(config, row)
 
 
-def run(config: Config, *, repo: str | None = None, dry_run: bool = False, no_pr: bool = False, lens: str | None = None) -> dict:
-    """Preview without writes, rehearse without publishing, or run the full pass."""
+def _outcome(config: Config, run_id: str, repository: str, now: datetime, outcome: str, reason: str, lens: str | None = None) -> dict:
+    row = {
+        "run_id": run_id,
+        "repo": repository,
+        "started": now.isoformat(),
+        "finished": now.isoformat(),
+        "outcome": outcome,
+        "pr_number": None,
+        "pr_url": None,
+        "category": lens,
+        "lens": lens,
+        "title": None,
+        "reason": reason,
+        "codex_calls": 0,
+        "model": config.improve.model,
+        "checkout_updated": False,
+    }
+    directory = config.state_dir / "improve" / "runs" / run_id / repository
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "result.json").write_text(json.dumps(row, indent=2))
+    except OSError as error:
+        row.update(outcome="failed", reason=f"{reason}; could not write run artifact: {error}")
+    store.record_run(config, row)
+    return row
+
+
+def _pass(config: Config, selected: list, run_id: str, now: datetime, repo: str | None, lens: str | None, dry_run: bool, no_pr: bool) -> list[dict]:
+    settings = config.improve
+    if settings is None:
+        return []
+    disabled = not settings.enabled or (config.state_dir / "improve" / "PAUSE").exists()
+    try:
+        entries = {entry["repo"]: entry for entry in brake.read(config, fetch=not dry_run)} if not disabled else {}
+    except Exception as error:
+        if dry_run:
+            return [{"repo": repository.name, "outcome": "failed", "reason": str(error)} for _, repository in selected]
+        return [_outcome(config, run_id, repository.name, now, "failed", f"system: could not read metalm's brake list: {error}") for _, repository in selected]
+    plans = []
+    for entry, repository in selected:
+        try:
+            board = (
+                cadence.plan(config, entry, repository, now, fetch=not dry_run, forced_lens=lens)
+                if not disabled
+                else {
+                    "repo": repository.name,
+                    "lens": None,
+                    "D": 0,
+                    "T": 0,
+                    "today": 0,
+                    "overdue": [],
+                    "due": False,
+                    "reason": "system paused",
+                    "oldest": now.isoformat(),
+                }
+            )
+            plans.append((entry, repository, board))
+        except Exception as error:
+            plans.append(
+                (
+                    entry,
+                    repository,
+                    {
+                        "repo": repository.name,
+                        "lens": lens,
+                        "D": 0,
+                        "T": 0,
+                        "today": 0,
+                        "overdue": [],
+                        "due": False,
+                        "reason": str(error),
+                        "error": True,
+                        "oldest": now.isoformat(),
+                    },
+                )
+            )
+    if len(plans) > 1 and all(board.get("error") for _, _, board in plans):
+        # Every repo failed to plan: a shared outage (network, gh auth), not something to brake each repo for.
+        for _, _, board in plans:
+            board["reason"] = "system: " + board["reason"]
+    plans.sort(key=lambda item: cadence.order(item[2]))
+    rows = []
+    for entry, repository, board in plans:
+        failure = board.get("error", False)
+        reason = board["reason"] if failure else ""
+        braked = entries.get(repository.name)
+        trigger = brake.trigger(store.read_runs(config, repository.name, limit=1000000), brake.last_brake(config, repository.name)) if not disabled else None
+        brake_failure = ""
+        attempted_brake = False
+        if trigger and not dry_run and not no_pr:
+            attempted_brake = True
+            try:
+                result = brake.apply(config, repository.name, trigger, run_id, now)
+                if not result.get("acknowledged"):
+                    braked = result.get("entry") or braked
+                    failure = False
+                    reason = brake.reason(braked) if braked else "brake pending: " + str(trigger.get("summary", "repeated unsuccessful runs"))
+                if not result["ok"]:
+                    brake_failure = result["reason"]
+            except Exception as error:
+                reason, brake_failure, failure = "brake pending", str(error), False
+        if trigger and (dry_run or no_pr) and not braked and not reason and not brake.acknowledged(config, repository.name, trigger):
+            reason = "brake pending: " + trigger["summary"]
+        if not failure and not reason:
+            reason = (
+                "improve is disabled" if not settings.enabled else "system PAUSE file exists" if disabled else brake.reason(braked) if braked else _cap(config)
+            )
+        if not reason and not board["due"] and repo is None:
+            reason = board["reason"]
+        if not reason and board["lens"] is None:
+            reason = "no applicable lens"
+        if dry_run:
+            try:
+                reason = reason or _skip(config, repository, dry_run=True)
+            except Exception as error:
+                reason, failure = str(error), True
+            rows.append(
+                {
+                    **board,
+                    "due": not bool(reason),
+                    "outcome": "failed" if failure else "skipped" if reason else "would-run",
+                    "reason": reason or board["reason"],
+                    "brake": braked,
+                }
+            )
+            continue
+        if reason:
+            row = _outcome(config, run_id, repository.name, now, "failed" if failure else "skipped", reason, board["lens"])
+        else:
+            row = _run_repo(config, entry, repository, run_id, no_pr, board["lens"], now)
+        trigger = brake.trigger(store.read_runs(config, repository.name, limit=1000000), brake.last_brake(config, repository.name))
+        if trigger and not no_pr and not disabled and not attempted_brake:
+            try:
+                result = brake.apply(config, repository.name, trigger, run_id, now)
+                if not result["ok"]:
+                    brake_failure = result["reason"]
+            except Exception as error:
+                brake_failure = str(error)
+        if brake_failure:
+            row["brake_error"] = brake_failure
+        rows.append({**board, **row})
+    return rows
+
+
+def run(config: Config, *, repo: str | None = None, dry_run: bool = False, no_pr: bool = False, lens: str | None = None, now: datetime | None = None) -> dict:
+    """Preview cadence without writes, or run due repositories under a serial lock."""
     if dry_run and no_pr:
         raise ImproveError("--dry-run and --no-pr cannot be combined")
     if lens is not None and (repo is None or lens not in lenses.NAMES):
         raise ImproveError("--lens requires --repo and a known lens")
     selected = _selected(config, repo)
     settings = config.improve
+    now = now or NOW()
     caps = (
         {"max_codex_calls_per_day": settings.max_codex_calls_per_day, "max_review_cost_usd_per_day": settings.max_review_cost_usd_per_day} if settings else {}
     )
+    run_id = now.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
     if dry_run:
-        rows = []
-        for entry, repository in selected:
-            try:
-                reason = _skip(config, repository, dry_run=True)
-                tracked = _command(["git", "ls-tree", "-r", "--name-only", "-z", "origin/main"], cwd=repository.path).split("\0")
-                available = lenses.applicable(entry, tracked)
-                chosen = lens or lenses.choose(available, store.read_runs(config, repository.name, limit=1000000))
-                if chosen not in available:
-                    reason = reason or "no applicable lens"
-                rows.append(
-                    {
-                        "repo": repository.name,
-                        "outcome": "skipped" if reason else "would-run",
-                        "reason": reason or "would propose, gate, verify, review and merge or close",
-                        "lens": chosen,
-                    }
-                )
-            except Exception as error:
-                rows.append({"repo": repository.name, "outcome": "failed", "reason": str(error)})
+        rows = _pass(config, selected, run_id, now, repo, lens, True, no_pr)
     else:
         with _termination_signal(), _lock(config):
             store.initialize(config)
-            run_id = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
-            rows = [_run_repo(config, entry, repository, run_id, no_pr, lens) for entry, repository in selected]
+            when, late = cadence.slot(settings, now) if settings else ("", 0)
+            if settings and repo is None and late > settings.max_lateness_min:
+                rows = [_outcome(config, run_id, "slot", now, "skipped", f"slot {when} missed by {late} min (Mac asleep)")]
+            else:
+                rows = _pass(config, selected, run_id, now, repo, lens, False, no_pr)
     return {
         "rows": rows,
-        "ok": all(row["outcome"] != "failed" for row in rows),
+        "ok": all(row["outcome"] != "failed" and not row.get("brake_error") for row in rows),
         "usage": store.usage(config),
         "caps": caps,
         "dry_run": dry_run,

@@ -103,9 +103,9 @@ def test_improve_plist_and_install_command(tmp_path):
     settings = configuration(tmp_path)
     rendered = plistlib.loads(schedule.render(settings, "improve", checkout=tmp_path / "checkout").encode())
     assert rendered["Label"] == "com.example.metalm.improve"
-    assert rendered["StartCalendarInterval"] == {"Hour": 1, "Minute": 30}
+    assert rendered["StartCalendarInterval"] == [{"Hour": hour, "Minute": 10} for hour in (9, 13, 17, 21)]
     assert rendered["StandardOutPath"].endswith("improve.launchd.log")
-    assert rendered["ProgramArguments"] == ["/bin/bash", str(tmp_path / "checkout/scripts/nightly-improve.sh")]
+    assert rendered["ProgramArguments"] == ["/bin/bash", str(tmp_path / "checkout/scripts/improve-slot.sh")]
     assert "schedule print improve" in schedule.install_command(settings, "improve")
 
 
@@ -125,8 +125,8 @@ def test_new_help_and_completion(capsys):
 def stand_in(tmp_path, failed=(), sleeping=False):
     checkout = tmp_path / "checkout"
     (checkout / "scripts").mkdir(parents=True)
-    script = checkout / "scripts/nightly-improve.sh"
-    script.write_text((ROOT / "scripts/nightly-improve.sh").read_text())
+    script = checkout / "scripts/improve-slot.sh"
+    script.write_text((ROOT / "scripts/improve-slot.sh").read_text())
     cases = "".join(f'"{name}") exit 3;;\n' for name in failed)
     if sleeping:
         cases += '"improve run") kill -TERM "$PPID"; exit 0;;\n'
@@ -154,7 +154,7 @@ def test_improve_nightly_failures_alert_once_and_continue(tmp_path):
     subprocess.run(["/bin/bash", str(script)], env=environment, check=False)
     assert (tmp_path / "calls").read_text().splitlines() == ["doctor", "improve run"]
     alerts = (tmp_path / "alerts").read_text().splitlines()
-    assert len(alerts) == 1 and "nightly improve" in alerts[0] and "doctor, improve" in alerts[0]
+    assert len(alerts) == 1 and "improve slot" in alerts[0] and "doctor, improve" in alerts[0]
 
 
 def test_improve_nightly_killed_names_run(tmp_path):
@@ -163,8 +163,8 @@ def test_improve_nightly_killed_names_run(tmp_path):
     assert "the run itself" in (tmp_path / "alerts").read_text()
 
 
-def test_doctor_improve_dependencies_and_wake(tmp_path, monkeypatch):
-    from metalm_ops.improve import agents
+def test_doctor_improve_dependencies_and_slots(tmp_path, monkeypatch):
+    from metalm_ops.improve import agents, brake
     from metalm_ops.improve.run import LABELS
 
     selected = configuration(tmp_path, {"repo": [{"name": "alm", "test": "true"}]})
@@ -173,7 +173,10 @@ def test_doctor_improve_dependencies_and_wake(tmp_path, monkeypatch):
     executable.write_text("stub")
     monkeypatch.setattr(agents, "codex_binary", lambda settings: str(executable))
     monkeypatch.setattr(agents, "claude_binary", lambda settings: str(executable))
-    monkeypatch.setattr(schedule, "installed_path", lambda settings, job: tmp_path / "missing.plist")
+    installed = tmp_path / "installed.plist"
+    installed.write_text(schedule.render(selected, "improve"))
+    monkeypatch.setattr(schedule, "installed_path", lambda settings, job: installed)
+    monkeypatch.setattr(brake, "read", lambda *args, **kwargs: {})
 
     def runner(arguments, cwd=None):
         if arguments[1:] == ["login", "status"]:
@@ -182,14 +185,13 @@ def test_doctor_improve_dependencies_and_wake(tmp_path, monkeypatch):
             return 0, "logged in"
         if arguments[1:3] == ["label", "list"]:
             return 0, json.dumps([{"name": name} for name, _, _ in LABELS])
-        if arguments[0] == "/usr/bin/pmset":
-            return 0, "wakeorpoweron at 1:20AM every day"
         raise AssertionError(arguments)
 
     monkeypatch.setattr(status, "RUNNER", runner)
     findings = doctor.improve_checks(selected)
     assert all(finding.ok for finding in findings)
-    assert any(finding.name == "daily wake before improve" and finding.fix.endswith("01:20:00") for finding in findings)
+    assert any(finding.name == "improve plist matches slots" for finding in findings)
+    assert not any("wake" in finding.name for finding in findings)
     assert any(finding.name == "improve alm labels" for finding in findings)
     monkeypatch.setattr(status, "RUNNER", lambda arguments, cwd=None: (1, "unavailable"))
     failed = doctor.improve_checks(selected)
@@ -203,7 +205,9 @@ def test_doctor_improve_dependencies_and_wake(tmp_path, monkeypatch):
     [(1, "merged", True, "green"), (1, "rejected", True, "green"), (1, "failed", False, "red"), (37, "merged", True, "red"), (37, "merged", False, "amber")],
 )
 def test_auto_improve_status_thresholds(tmp_path, monkeypatch, hours, outcome, loaded, expected):
-    from metalm_ops.improve import store
+    from metalm_ops.improve import brake, store
+
+    monkeypatch.setattr(brake, "read", lambda *args, **kwargs: [])
 
     selected = configuration(tmp_path, {"repo": [{"name": "alm", "test": "true"}]})
     now = datetime(2026, 11, 26, 12, tzinfo=UTC)
@@ -213,13 +217,14 @@ def test_auto_improve_status_thresholds(tmp_path, monkeypatch, hours, outcome, l
         lambda *arguments, **keywords: [{"finished": (now - timedelta(hours=hours)).isoformat(), "outcome": outcome, "reason": "test reason"}],
     )
     assert status.improve_row(selected, "alm", now, loaded=loaded).level == expected
-    (selected.state_dir / "improve").mkdir(parents=True)
-    (selected.state_dir / "improve/paused-alm").touch()
+    monkeypatch.setattr(brake, "read", lambda *args, **kwargs: [{"repo": "alm", "since": now.isoformat(), "summary": "judge rejections", "reason": "rejected"}])
     assert status.improve_row(selected, "alm", now, loaded=loaded).level == "amber"
 
 
 def test_auto_improve_status_never_run_is_amber(tmp_path, monkeypatch):
-    from metalm_ops.improve import store
+    from metalm_ops.improve import brake, store
+
+    monkeypatch.setattr(brake, "read", lambda *args, **kwargs: [])
 
     selected = configuration(tmp_path, {"repo": [{"name": "alm", "test": "true"}]})
     monkeypatch.setattr(store, "read_runs", lambda *arguments, **keywords: [])
@@ -245,8 +250,8 @@ def test_improve_cli_json_routes_preview_and_status(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(
         run,
         "status",
-        lambda settings: {
-            "repos": [{"name": "alm", "paused": True}],
+        lambda settings, repo=None: {
+            "repos": [{"name": "alm", "brake": {"reason": "rejected"}}],
             "rows": [{"repo": "alm", "outcome": "rejected", "reason": "too broad", "pr_url": "https://example.test/1"}],
             "ok": True,
             "next": "review pause",
@@ -254,7 +259,7 @@ def test_improve_cli_json_routes_preview_and_status(tmp_path, monkeypatch, capsy
     )
     assert cli.main(["improve", "status"]) == 0
     output = capsys.readouterr().out
-    assert "alm: paused" in output and "rejected" in output and "https://example.test/1" in output
+    assert "alm: braked" in output and "rejected" in output and "https://example.test/1" in output
 
 
 def test_prompts_inventory_and_json(capsys):
@@ -344,6 +349,9 @@ def test_improve_rejects_table_instead_of_array_and_duplicate_names(tmp_path):
 
 
 def test_status_collect_includes_auto_improve_on_repository_card(tmp_path, monkeypatch):
+    from metalm_ops.improve import brake
+
+    monkeypatch.setattr(brake, "read", lambda *args, **kwargs: [])
     selected = configuration(tmp_path, {"repo": [{"name": "alm", "test": "true"}]})
     monkeypatch.setattr(status, "RUNNER", lambda *arguments: (1, "not loaded"))
     monkeypatch.setattr(status, "REPOS_MD", tmp_path / "missing.md")

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Nightly improve (launchd; the hour lives only in the plist that `metalm-ops schedule print improve` writes).
+# Improve slot (launchd; ops.toml slots render through `metalm-ops schedule print improve`; no wake).
 # Steps: doctor, improve run. Every step is attempted (no set -e);
 # a clean run is silent; any failure sends one SuperLM banner naming the failed steps (guidelines/scheduling.md).
 # METALM_NOTIFY_CMD points the alert at a stub (tests); nothing else is overridable.
@@ -37,7 +37,7 @@ on_exit() {
   if [ "${#FAILED[@]}" -gt 0 ]; then
     local body="failed: $(IFS=,; echo "${FAILED[*]}" | sed 's/,/, /g'). Log: $LOG"
     if [ -x "$NOTIFY" ]; then
-      "$NOTIFY" --repo metalm --title "nightly improve" --body "$body" >>"$LOG" 2>&1
+      "$NOTIFY" --repo metalm --title "improve slot" --body "$body" >>"$LOG" 2>&1
     else
       echo "cannot alert: $NOTIFY is missing; $body" >>"$LOG"
     fi

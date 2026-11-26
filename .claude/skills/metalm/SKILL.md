@@ -30,15 +30,17 @@ A change here reaches every repo that imports `guidelines/index.md` on its next 
 - `metalm-ops doctor`: setup steps no code installs, each with its fix; the nightly job runs it first.
 - `metalm-ops schedule print backup|serve|improve`: the launch agent plist to install; stderr prints the install command for the owner.
 - `metalm-ops improve run [--repo NAME] [--lens NAME] [--dry-run | --no-pr]`: one Codex proposal, an independent Claude verifier trying to disprove its claim, and two independent Claude reviews per opted-in repo; Python merges only after the verifier confirms, both reviewers approve and CI is green. `--dry-run` previews skips, caps and usage without models or writes; `--no-pr` runs the proposer and gates, then discards without a commit or PR. Review calls can incur cost.
-- `metalm-ops improve status`: the last seven runs per opted-in repo, lenses, PR links, reasons and pause state.
-- `metalm-ops improve labels [--repo NAME] [--dry-run]`: creates or updates the five system labels before the first live run.
+- `metalm-ops improve status [--repo NAME] [--json]`: demand `D`, activity target `T`, runs `today`, overdue lenses, brake entry and the last ten runs with PR links and reasons. At session start use `--repo NAME --json`; a repo not opted in returns `{"opted_in": false}`. Report a brake immediately, or seven days without a PR, following `guidelines/auto-improve.md`.
+- `metalm-ops improve labels [--repo NAME] [--dry-run]`: creates or updates the six system labels (including `auto-improve-brake`) in metalm and opted-in repos before the first live run.
 - `metalm-ops prompts [--json]`: lists the versioned proposer and reviewer prompts, schemas and hashes.
-- `scripts/nightly-improve.sh`: the 01:30 job (doctor, improve run); one failure-only banner, logs retained 30 days.
+- `scripts/improve-slot.sh`: the slot job (doctor, improve run); one failure-only banner, logs retained 30 days. It holds an already-awake Mac awake while running, never schedules a wake.
 
 Lenses rotate by oldest completed run, never-run first: readability, documentation, duplication, tests, backend-robustness, frontend-robustness, ui, performance and drift. Frontend lenses require tracked frontend files; optional `[[improve.repo]] lenses` limits them. `--lens NAME` forces an applicable lens and requires `--repo`. Performance requires before/after measurements; evidence quotes are checked against the base commit. This replaces codeteamlm, which is retired after this merges (the owner handles archiving and target migration).
 
+Slots default to 09:10, 13:10, 17:10 and 21:10; configure 1–8 increasing `HH:MM` times in `[improve] slots`. A slot more than `max_lateness_min` (default 60) late is skipped. Demand sums eligible changed lines over seven days with `decay = [1, 1, .75, .5, .5, .25, .25]`; `lines_per_run = 400` sets the activity target, capped at the number of slots. Overdue applicable lenses get a weekly floor; oldest lenses run first. `--repo` ignores cadence for a manual run. `--dry-run` shows demand, target, today, overdue, due reason and lens. Doctor checks installed times against config; after changing slots, reinstall the printed plist.
+
 Pause all runs: create `<state_dir>/improve/PAUSE`, or set `[improve] enabled = false` in the global `~/.claude/metalm/ops.toml` (default true when the table exists; absent means off).
-Unpause one repo after three rejected PRs: delete `<state_dir>/improve/paused-<repo>` after reviewing its history.
+A repo brakes after three judge-rejected PRs or five qualifying runs without a PR. The system records `improve/braked.toml` through a visible PR in metalm, merges it and alerts. On the owner’s word, `metalm-ops improve unbrake --repo NAME --why "<owner’s words>" [--dry-run]` opens the removal PR; it never merges it. Diagnose the rejected PRs or failed runs before resuming.
 Run artifacts are in `<state_dir>/improve/runs/<run_id>/<repo>/`; the run and call ledger is `<state_dir>/improve/runs.sqlite`. Global `state_dir` defaults to `~/.local/state/metalm/ops` in `~/.claude/metalm/ops.toml`.
 
 - `metalm-ops help [verb]`, `metalm-ops completion`.

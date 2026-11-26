@@ -34,6 +34,7 @@ VERDICT = {
     "reasons": "The comment is accurate and the change is minimal.",
 }
 LABELS = {
+    "auto-improve-brake": ("B60205", "A visible auto-improve brake or owner-authorized resume"),
     "auto-improve": ("5319E7", "Opened by the daily auto-improve system (metalm-ops improve)"),
     "codex-automated": ("10A37F", "Written by OpenAI Codex, reviewed by Claude; no human in the loop"),
     "auto-improve-rejected": ("B60205", "Auto-improve PR closed by its reviewers, CI or gates"),
@@ -151,6 +152,31 @@ class World:
             },
         }
         self.config = parse(self.data)
+        # Issue #88: brake state belongs to an isolated metalm origin, never the owner's checkout.
+        self.metalm = root / "metalm-control"
+        self.metalm.mkdir()
+        git(self.metalm, "init", "-b", "main")
+        git(self.metalm, "config", "user.name", "Test Author")
+        git(self.metalm, "config", "user.email", "test@example.invalid")
+        git(self.metalm, "config", "core.hooksPath", str(root / "empty-hooks"))
+        (self.metalm / "improve").mkdir()
+        (self.metalm / "improve/braked.toml").write_text("braked = []\n")
+        git(self.metalm, "add", ".")
+        git(self.metalm, "commit", "-m", "Empty brake list")
+        self.metalm_origin = root / "metalm-control.git"
+        self.metalm_origin.mkdir()
+        git(self.metalm_origin, "init", "--bare", "--initial-branch=main")
+        git(self.metalm, "remote", "add", "origin", str(self.metalm_origin))
+        git(self.metalm, "push", "-u", "origin", "main")
+        try:
+            from metalm_ops.improve import brake
+        except ImportError:
+            pass  # Red-first fixtures also run before the feature module exists.
+        else:
+            monkeypatch.setattr(brake, "CHECKOUT", self.metalm)
+        from datetime import datetime
+
+        monkeypatch.setattr(run, "NOW", lambda: datetime.now().astimezone().replace(hour=13, minute=10, second=0, microsecond=0), raising=False)
 
     def configure(self, **settings):
         self.data["improve"].update(settings)
@@ -211,7 +237,8 @@ class World:
                 self.opened_time = time.monotonic()
                 body = Path(arguments[arguments.index("--body-file") + 1]).read_text()
                 self.bodies.append(body)
-                return self.completed(arguments, output="https://github.com/example/alm/pull/17\n")
+                url = "https://github.com/nagarkar/metalm/pull/88" if "nagarkar/metalm" in arguments else "https://github.com/example/alm/pull/17"
+                return self.completed(arguments, output=url + "\n")
             if action == ["pr", "view"]:
                 if "--json" in arguments:
                     fields = arguments[arguments.index("--json") + 1]
@@ -245,6 +272,10 @@ class World:
                     raise self.checks
                 return self.completed(arguments, *self.checks)
             if action in (["pr", "merge"], ["pr", "close"]):
+                if "nagarkar/metalm" in arguments:
+                    if action == ["pr", "merge"]:
+                        git(self.metalm_origin, "update-ref", "refs/heads/main", f"refs/heads/{self.last_branch}")
+                    return self.completed(arguments)
                 assert not any(path.exists() for path in self.worktrees), "Remove the worktree before deciding"
                 if action == ["pr", "merge"]:
                     repository_name = next((name for name in self.repos if f"example/{name}" in arguments), "alm")
@@ -253,6 +284,8 @@ class World:
             if action == ["pr", "edit"]:
                 return self.completed(arguments)
             raise AssertionError(f"Unexpected GitHub command: {arguments}")
+        if executable == "superlm-notify":
+            return self.completed(arguments)
         if executable == "git":
             actual = arguments[1:]
             if actual[:1] == ["-C"]:

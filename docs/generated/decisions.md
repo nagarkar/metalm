@@ -15,7 +15,9 @@ Rules that span modules, from each package's `Decisions:`. Owner rules end with 
 - `metalm_ops`: Which databases, apps and agents exist is one central gitignored file in metalm (`ops.toml`), never a manifest in each repo, so no tracked file says what databases exist. (owner)
 - `metalm_ops.improve`: A dry run calls no agent and writes nothing; `--no-pr` rehearses the proposal and gates without publishing. (owner)
 - `metalm_ops.improve`: Codex proposes; a Claude verifier must confirm the quoted claim, then two independent Claude calls review; both must approve clearly with confidence at least 0.8, and checks must pass, before Python merges. (owner)
+- `metalm_ops.improve`: Configured daytime slots never wake the Mac; changed-line demand supplements a weekly floor for every applicable lens. (owner)
 - `metalm_ops.improve`: The system never updates a live checkout unless it is clean and on main. (owner)
+- `metalm_ops.improve`: Three judge-rejected PRs or five qualifying runs without a PR publish a visible brake in metalm; only the owner can resume it through an unbrake PR. (owner)
 
 ## Agent-drafted
 

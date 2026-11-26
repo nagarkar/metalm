@@ -60,7 +60,7 @@ Strict loader for `ops.toml`, the one gitignored list of what metalm watches.
 
 `src/metalm_ops/improve/__init__.py`
 
-Daily small improvements, proposed by Codex and independently reviewed by Claude.
+Activity-driven small improvements, proposed by Codex and independently reviewed by Claude.
 
 ## `metalm_ops.offsite`
 

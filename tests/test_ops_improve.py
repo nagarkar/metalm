@@ -52,12 +52,14 @@ def test_no_pr_runs_real_gates_but_creates_no_commit_or_pr(world):
     world.assert_cleaned()
 
 
-@pytest.mark.parametrize("mode", ["disabled", "pause", "open", "paused", "codex-cap", "review-cap"])
+@pytest.mark.parametrize("mode", ["disabled", "pause", "open", "braked", "codex-cap", "review-cap"])
 def test_skip_reasons_are_recorded_without_agents(world, mode):
     if mode == "disabled":
         world.configure(enabled=False)
-    elif mode in {"pause", "paused"}:
-        path = world.config.state_dir / "improve" / ("PAUSE" if mode == "pause" else "paused-alm")
+    elif mode == "braked":
+        publish_brake(world)
+    elif mode == "pause":
+        path = world.config.state_dir / "improve" / "PAUSE"
         path.parent.mkdir(parents=True)
         path.write_text("owner pause")
     elif mode == "open":
@@ -74,17 +76,23 @@ def test_skip_reasons_are_recorded_without_agents(world, mode):
         assert "daily cap reached" in row["reason"]
 
 
-def test_three_closed_unmerged_prs_pause_until_owner_deletes_marker(world):
-    world.history = [
-        {"number": number, "title": f"Old {number}", "state": "CLOSED", "closedAt": f"2026-11-{number:02d}T10:00:00Z", "body": ""} for number in (25, 24, 23)
-    ]
+def publish_brake(world):
+    """Issue #88 replaces local marker deletion with tracked configuration review."""
+    (world.metalm / "improve/braked.toml").write_text(
+        '[[braked]]\nrepo = "alm"\nsince = "2026-11-25T10:00:00Z"\nreason = "rejected"\nsummary = "three judge rejections"\nruns = ["r1", "r2", "r3"]\nprs = []\n'
+    )
+    git(world.metalm, "add", ".")
+    git(world.metalm, "commit", "-m", "Brake fixture")
+    git(world.metalm, "push", "origin", "main")
+
+
+def test_tracked_brake_skips_even_without_local_pause_marker(world):
+    publish_brake(world)
     _, row = result(world)
     assert row["outcome"] == "skipped"
-    marker = world.config.state_dir / "improve" / "paused-alm"
-    assert marker.exists() and not world.prompts
-    marker.unlink()
-    _, row = result(world, no_pr=True)
-    assert row["outcome"] == "no-pr", "Deleting the marker must actually unpause the repo despite unchanged historical PRs"
+    assert row["reason"] == "braked since 2026-11-25T10:00:00Z: three judge rejections"
+    assert not world.prompts
+    assert not (world.config.state_dir / "improve" / "paused-alm").exists()
 
 
 def test_merged_pr_breaks_rejection_streak(world):
@@ -249,9 +257,10 @@ def test_two_approvals_and_green_ci_merge_with_provenance(world):
     assert create[create.index("--title") + 1] == "[auto-improve] " + PROPOSAL["title"]
     assert create[create.index("--base") + 1] == "main"
     assert {create[index + 1] for index, value in enumerate(create) if value == "--label"} == {"auto-improve", "codex-automated"}
+    # Owner guideline #89 standard opening also describes brake PRs.
     expected = (
         f"> **Opened by the auto-improve system:** OpenAI Codex (`codex exec`, model gpt-6-astra, effort high), run by `metalm-ops improve` on the owner's Mac, run `{row['run_id']}`.\n"
-        "> **Why:** one small daily improvement per repo, under metalm `guidelines/auto-improve.md`. Two Claude reviewers (Anthropic, a different provider from the writer) judge it next. It merges only if both approve and CI is green; otherwise it is closed.\n"
+        "> **Why:** one small improvement per run under metalm `guidelines/auto-improve.md`.\n"
     )
     assert world.bodies[0].startswith(expected)
     for heading in ("## What", "## Why it is safe", "## Tests", "## Files"):
@@ -278,7 +287,9 @@ def test_two_approvals_and_green_ci_merge_with_provenance(world):
 def test_labels_use_exact_names_colours_and_descriptions(world):
     run.labels(world.config)
     commands = world.commands("gh", "label", "create")
-    assert len(commands) == 5
+    # Issue #88 creates six labels in each opted-in repo and in metalm.
+    assert len(commands) == 12
+    assert {command[command.index("--repo") + 1] for command in commands} == {"example/alm", "nagarkar/metalm"}
     for command in commands:
         name = command[3]
         assert name in LABELS and "--force" in command
@@ -366,10 +377,17 @@ def test_invalid_reviewer_rejects(world, answer):
     assert not world.commands("gh", "pr", "merge")
 
 
+def test_reserve_for_three_judges_stops_a_proposal_the_budget_cannot_review(world):
+    world.configure(max_review_cost_usd_per_day=0.5)
+    _, row = result(world)
+    assert row["outcome"] == "skipped" and "reserve for three judges" in row["reason"]
+    assert not world.prompts
+
+
 def test_proposer_skip_is_recorded_without_pr(world):
     world.proposal = {**PROPOSAL, "skip": True, "skip_reason": "Nothing is clear-cut."}
     _, row = result(world)
-    assert row["outcome"] == "skipped" and row["reason"] == "Nothing is clear-cut."
+    assert row["outcome"] == "skipped" and row["reason"] == "proposer found nothing: Nothing is clear-cut."
     assert not world.bodies
 
 
@@ -455,16 +473,19 @@ def test_one_repo_crash_does_not_stop_the_next(tmp_path, monkeypatch):
     world = World(tmp_path, monkeypatch, names=("alm", "blm"))
     world.crash_fetch.add("alm")
     board = run.run(world.config, no_pr=True)
-    assert [(row["repo"], row["outcome"]) for row in board["rows"]] == [("alm", "failed"), ("blm", "no-pr")]
+    # Issue #88 runs due repos first; planning failures still remain isolated.
+    assert sorted((row["repo"], row["outcome"]) for row in board["rows"]) == [("alm", "failed"), ("blm", "no-pr")]
     assert not board["ok"]
-    assert "fixture fetch crashed" in board["rows"][0]["reason"]
-    assert [row["outcome"] for row in world.ledger("run")] == ["failed", "no-pr"]
+    assert "fixture fetch crashed" in next(row["reason"] for row in board["rows"] if row["repo"] == "alm")
+    assert {row["repo"]: row["outcome"] for row in world.ledger("run")} == {"alm": "failed", "blm": "no-pr"}
     world.assert_cleaned()
 
 
 @pytest.mark.parametrize("cap", ["codex", "review"])
 def test_daily_caps_stop_remaining_repos(tmp_path, monkeypatch, cap):
-    settings = {"max_codex_calls_per_day": 1} if cap == "codex" else {"max_review_cost_usd_per_day": 0.2}
+    settings = (
+        {"max_codex_calls_per_day": 1} if cap == "codex" else {"max_review_cost_usd_per_day": 0.8}
+    )  # one run spends 0.3; 0.3 + the 0.6 judge reserve exceeds 0.8
     world = World(tmp_path, monkeypatch, names=("alm", "blm"), **settings)
     board = run.run(world.config)
     assert board["rows"][1]["outcome"] == "skipped"
@@ -496,16 +517,15 @@ def test_every_call_has_persistent_provenance_and_raw_artifacts(world):
         assert (directory / filename).is_file()
 
 
-def test_status_returns_last_seven_runs_and_pause_state(world):
+def test_status_returns_last_ten_runs_and_brake_state(world):
     world.configure(enabled=False)
-    for _ in range(8):
+    for _ in range(11):
         run.run(world.config)
-    marker = world.config.state_dir / "improve" / "paused-alm"
-    marker.write_text("owner pause")
+    publish_brake(world)
     board = run.status(world.config)
     assert board["next"] and len(board["repos"]) == 1
-    assert board["repos"][0]["name"] == "alm" and board["repos"][0]["paused"]
-    assert len(board["repos"][0]["runs"]) == 7
+    assert board["repos"][0]["name"] == "alm" and board["repos"][0]["brake"]["repo"] == "alm"
+    assert len(board["repos"][0]["runs"]) == 10
     assert all(row["outcome"] == "skipped" for row in board["repos"][0]["runs"])
 
 
@@ -517,8 +537,8 @@ def test_daily_codex_cap_survives_separate_invocations(world):
     assert len(world.ledger("call")) == 1
 
 
-def test_dry_run_reports_history_pause_without_writing_marker(world):
-    world.history = [{"number": number, "title": "rejected", "state": "CLOSED", "closedAt": "2026-11-25T10:00:00Z", "body": ""} for number in (3, 2, 1)]
+def test_dry_run_reports_tracked_brake_without_writing_state(world):
+    publish_brake(world)
     _, row = result(world, dry_run=True)
     assert row["outcome"] == "skipped"
     assert not world.config.state_dir.exists()
@@ -530,8 +550,9 @@ def test_review_cost_is_counted_even_when_reviewer_errors(world):
     assert store.usage(world.config)["review_cost_usd"] == pytest.approx(0.6)
 
 
-def test_review_cap_reached_between_reviewers_prevents_second_call(world):
-    # Issue #84 spends 0.1 on verification before the first reviewer.
+def test_review_cap_reached_between_reviewers_prevents_second_call(world, monkeypatch):
+    # Issue #84 spends 0.1 on verification before the first reviewer; no reserve, to reach the mid-PR cap path.
+    monkeypatch.setattr(run, "REVIEW_RESERVE_USD", 0.0)
     world.configure(max_review_cost_usd_per_day=0.15)
     _, row = result(world)
     assert row["outcome"] == "rejected"
@@ -675,7 +696,8 @@ def test_failed_first_run_directory_does_not_stop_next_repo(tmp_path, monkeypatc
 
     monkeypatch.setattr(Path, "mkdir", fail_first_directory)
     board = run.run(world.config, no_pr=True)
-    assert [(row["repo"], row["outcome"]) for row in board["rows"]] == [("alm", "failed"), ("blm", "no-pr")]
+    # Issue #88 runs due repos first; planning failures still remain isolated.
+    assert sorted((row["repo"], row["outcome"]) for row in board["rows"]) == [("alm", "failed"), ("blm", "no-pr")]
     rows = world.ledger("run")
     assert len(rows) == 2 and rows[0]["outcome"] == "failed"
     assert "unwritable" in rows[0]["reason"]

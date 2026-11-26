@@ -246,7 +246,8 @@ def test_verified_claim_still_requires_both_reviewer_approvals(world):
     assert not world.commands("gh", "pr", "merge")
 
 
-def test_verifier_cost_can_exhaust_review_budget_before_reviewers(world):
+def test_verifier_cost_can_exhaust_review_budget_before_reviewers(world, monkeypatch):
+    monkeypatch.setattr(run, "REVIEW_RESERVE_USD", 0.0)
     world.configure(max_review_cost_usd_per_day=0.05)
     row = execute(world)
     assert row["outcome"] == "rejected" and "cap" in row["reason"]

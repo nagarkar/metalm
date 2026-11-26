@@ -19,3 +19,11 @@ A confirmed Claude verifier proceeds to both reviewers; refuted, uncertain or ma
 | Real provider quality or live target deployment | intentionally untested; no real run authorized |
 
 2026-11-26: baseline 383 tests; lens/verifier suite 438 tests. Run `LC_ALL=C LANG=C PYTHONPATH=$PWD/src .venv/bin/pytest -q`, plus Ruff and `tools/check-caps.sh`. Every external process is stubbed or confined to local test repositories. No model spend is required. The owner installs schedules and configures target repositories after merge.
+
+## Activity slots and a visible brake
+
+Fixed-clock tests count first-parent changed lines by local day, excluding automatic merges, generated files, lockfiles and binary changes. They prove the seven-day impulse sum, slot count cap, overdue-lens floor, ordering, manual override and a single late-slot row. The 10,000-line example stays capped at four runs for seven days at the default 400 lines/run; at 2,500 lines/run its target decays 4,4,3,2,2,1,1. This follows the specified equation.
+
+Temporary metalm origins prove both brake thresholds, pinned-head merges, retry after partial publication, notification retry, preservation of intervening brakes and owner edits, interrupted commit recovery, and owner-word unbrake without merging. Status and doctor use isolated reads. The renamed slot script retains failure-only alert, interruption and retention tests; backup wake checks remain.
+
+2026-11-26 cadence/brake baseline: 438 tests; combined suite: 511 tests. No live automation, target checkout update, launch-agent install, system wake change or provider call is authorized by these tests.

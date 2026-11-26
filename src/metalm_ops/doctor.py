@@ -104,7 +104,7 @@ def failed(findings: list[Finding]) -> bool:
 
 def improve_checks(configuration: Config) -> list[Finding]:
     """Check the opt-in auto-improve dependencies without running either agent."""
-    from metalm_ops.improve import agents
+    from metalm_ops.improve import agents, brake
     from metalm_ops.improve.run import LABELS, ImproveError, newest_prompt
 
     settings = configuration.improve
@@ -165,23 +165,34 @@ def improve_checks(configuration: Config) -> list[Finding]:
             Finding(
                 f"improve {selected.name} labels",
                 not missing,
-                "all five labels present" if not missing else "missing: " + ", ".join(missing),
+                "all six labels present" if not missing else "missing: " + ", ".join(missing),
                 f"metalm-ops improve labels --repo {selected.name}",
             )
         )
-    when = schedule.start_time(schedule.installed_path(configuration, "improve"))
-    if when is None:
-        interval = plistlib.loads(schedule.render(configuration, "improve").encode())["StartCalendarInterval"]
-        when = interval["Hour"], interval.get("Minute", 0)
-    code, output = status._run(["/usr/bin/pmset", "-g", "sched"])
-    daily = "\n".join(line for line in output.splitlines() if "every day" in line.lower())
-    before = (when[0] * 60 + when[1] - 10) % 1440
-    findings.append(
-        Finding(
-            "daily wake before improve",
-            code == 0 and wake_covers(when, wake_times(daily)),
-            f"improve at {when[0]:02d}:{when[1]:02d}",
-            f"sudo pmset repeat wakeorpoweron MTWRFSU {before // 60:02d}:{before % 60:02d}:00",
+    if not any(repository.github == "nagarkar/metalm" and repository.name in {row.name for row in settings.repos} for repository in configuration.repos):
+        code, output = status._run([status.gh(), "label", "list", "--repo", "nagarkar/metalm", "--limit", "1000", "--json", "name"])
+        try:
+            present = {row["name"] for row in json.loads(output)} if code == 0 else set()
+        except (json.JSONDecodeError, TypeError, KeyError):
+            present = set()
+        missing = [name for name, _, _ in LABELS if name not in present]
+        findings.append(
+            Finding(
+                "improve metalm labels", not missing, "all six labels present" if not missing else "missing: " + ", ".join(missing), "metalm-ops improve labels"
+            )
         )
-    )
+    installed = schedule.installed_path(configuration, "improve")
+    expected = [{"Hour": int(slot[:2]), "Minute": int(slot[3:])} for slot in settings.slots]
+    try:
+        intervals = plistlib.loads(installed.read_bytes()).get("StartCalendarInterval")
+        matches = intervals == expected
+        detail = ", ".join(settings.slots) if matches else "installed times differ from improve.slots"
+    except (OSError, ValueError, plistlib.InvalidFileException) as error:
+        matches, detail = False, str(error)
+    findings.append(Finding("improve plist matches slots", matches, detail, schedule.install_command(configuration, "improve")))
+    try:
+        brake.read(configuration, fetch=False)
+        findings.append(Finding("improve braked.toml", True, "origin/main brake entries parse"))
+    except (ValueError, OSError, ImproveError) as error:
+        findings.append(Finding("improve braked.toml", False, str(error), "fix improve/braked.toml in metalm through a PR"))
     return findings

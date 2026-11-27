@@ -986,3 +986,20 @@ def test_a_proposal_that_adds_a_noqa_is_discarded(world):
     world.edit = edit
     _, row = result(world, no_pr=True)
     assert row["outcome"] == "gate-failed" and row["reason"].startswith("proposal silences a check instead of fixing it")
+
+
+BROKEN = [{"path": "src/sample/__init__.py", "search": "# Add the pair.", "replace": "def broken(:"}]
+
+
+def test_a_syntax_error_gets_one_repair_round_with_the_error(world):
+    world.queue = [{**world.proposal, "edits": BROKEN}]
+    _, row = result(world, no_pr=True)
+    assert row["outcome"] == "no-pr" and row["repaired"] is True and row["codex_calls"] == 2
+    second = [text for role, text, _ in world.prompts if role == "propose"][1]
+    assert "<previous-attempt>" in second and "syntax error" in second.lower() or "SyntaxError" in second
+
+
+def test_a_failed_repair_fails_the_gate(world):
+    world.queue = [{**world.proposal, "edits": BROKEN}, {**world.proposal, "edits": BROKEN}]
+    _, row = result(world, no_pr=True)
+    assert row["outcome"] == "gate-failed" and row["reason"].startswith("syntax error after the edits") and row["codex_calls"] == 2

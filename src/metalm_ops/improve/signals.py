@@ -586,6 +586,7 @@ IO_CALLS = {
     "connect",
 }  # per-item work one batched call usually replaces; reading a list of files one by one is not flagged
 NOT_IO = {
+    "time.sleep",
     "time.monotonic",
     "time.time",
     "time.perf_counter",
@@ -800,6 +801,18 @@ def renamed_duplication(sources: list[str], parsed: dict, limits: dict) -> list[
             for second in range(first + 1, len(places)):
                 (path_a, a), (path_b, b) = places[first], places[second]
                 if path_a == path_b and abs(a - b) < width:
+                    continue
+                lines_a, lines_b = shaped[path_a], shaped[path_b]
+                tree_a, tree_b = parsed[path_a][1], parsed[path_b][1]
+                inside_a = _enclosing(tree_a, lines_a[a][0])
+                inside_b = _enclosing(tree_b, lines_b[b][0])
+                # Both copies must sit inside one function each: signatures and blocks spanning two functions are not logic to share.
+                if (
+                    inside_a == "module"
+                    or inside_b == "module"
+                    or inside_a != _enclosing(tree_a, lines_a[a + width - 1][0])
+                    or inside_b != _enclosing(tree_b, lines_b[b + width - 1][0])
+                ):
                     continue
                 pair = (path_a, path_b)
                 if pair in best:

@@ -156,8 +156,10 @@ def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, d
             "--setting-sources",
             "",
             "--strict-mcp-config",
+            # No tools, so every turn is an answer attempt; the nested `concerns` schema (verdict_v2) can take a few
+            # retries, and 3 ran out on 2026-11-27 (musiclm#23, error_max_turns).
             "--max-turns",
-            "3",
+            "6",
         ]
         timeout = settings.review_timeout_min * 60
     clock = time.monotonic()

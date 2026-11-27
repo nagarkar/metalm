@@ -1003,3 +1003,20 @@ def test_a_failed_repair_fails_the_gate(world):
     world.queue = [{**world.proposal, "edits": BROKEN}, {**world.proposal, "edits": BROKEN}]
     _, row = result(world, no_pr=True)
     assert row["outcome"] == "gate-failed" and row["reason"].startswith("syntax error after the edits") and row["codex_calls"] == 2
+
+
+def test_wait_merge_reports_only_merges_after_the_cursor(world, monkeypatch):
+    rows = [{"outcome": "merged", "finished": "2026-11-27T09:00", "repo": "alm"}, {"outcome": "closed", "finished": "2026-11-27T09:30", "repo": "alm"}]
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        rows.append({"outcome": "merged", "finished": "2026-11-27T10:00", "repo": "alm"})
+
+    monkeypatch.setattr(run.store, "read_runs", lambda *args, **kwargs: list(rows))
+    monkeypatch.setattr(run, "SLEEP", sleep)
+    board = run.wait_merge(world.config, minutes=5)
+    assert [row["finished"] for row in board["merged"]] == ["2026-11-27T10:00"] and sleeps == [60]
+    assert board["since"] == "2026-11-27T10:00" and "--since 2026-11-27T10:00" in board["next"]
+    board = run.wait_merge(world.config, minutes=2, since="2026-11-27T10:00")
+    assert board["merged"] == [] and board["reason"] == "no merge in 2 min"

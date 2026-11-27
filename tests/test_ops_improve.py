@@ -263,7 +263,7 @@ def test_two_approvals_and_green_ci_merge_with_provenance(world):
         "> **Why:** one small improvement per run under metalm `guidelines/auto-improve.md`.\n"
     )
     assert world.bodies[0].startswith(expected)
-    for heading in ("## What", "## Why it is safe", "## Tests", "## Files"):
+    for heading in ("## What is wrong", "## What changed", "## How it was tested", "## Where to start"):
         assert heading in world.bodies[0]
     message = world.commit_messages[0]
     assert message.splitlines()[0] == PROPOSAL["title"]
@@ -316,7 +316,7 @@ def test_every_failing_review_condition_closes_and_labels(world, reviewer, field
     close = world.commands("gh", "pr", "close")[0]
     assert "--delete-branch" in close
     assert close[close.index("--comment") + 1] == "Closed by auto-improve: " + row["reason"]
-    edit = world.commands("gh", "pr", "edit")[0]
+    edit = next(edit for edit in world.commands("gh", "pr", "edit") if "--add-label" in edit)
     assert edit[edit.index("--add-label") + 1] == "auto-improve-rejected"
     assert not world.commands("gh", "pr", "merge")
     world.assert_cleaned()
@@ -865,13 +865,13 @@ def test_no_package_under_src_fails_the_import_gate(world):
 
 
 def test_proposer_gets_the_finding_and_its_code_in_one_request_and_python_applies_the_edits(world):
-    assert run.newest_prompt("propose").name == "propose_v5.md"
+    assert run.newest_prompt("propose").name == "propose_v6.md"
     _, row = result(world, no_pr=True)
     text = next(text for role, text, _ in world.prompts if role == "propose")
     assert "fixture finding" in text and '<file path="src/sample/__init__.py">' in text
     assert "Do NOT run any command" in text and "<guidelines>" not in text
     assert row["outcome"] == "no-pr"
-    assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v5"}
+    assert {call["prompt_id"] for call in world.ledger("call") if call["role"] == "propose"} == {"propose_v6"}
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,75 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "reject"
+      ],
+      "description": "Approve only a clear-cut improvement; reject anything doubtful."
+    },
+    "clear_cut": {
+      "type": "boolean",
+      "description": "Whether this could be merged without a team discussion."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Probability from zero to one that the verdict is correct."
+    },
+    "behaviour_change": {
+      "type": "boolean",
+      "description": "Whether observable behavior changes, including the visible result of a UI fix."
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Concrete potential harms identified by this reviewer."
+    },
+    "reasons": {
+      "type": "string",
+      "description": "The reviewer's explanation for the verdict."
+    },
+    "concerns": {
+      "type": "array",
+      "description": "Every concern you have, blocking or not; empty when none. A reader of the pull request sees each one with its resolution.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "concern",
+          "blocking",
+          "resolution"
+        ],
+        "properties": {
+          "concern": {
+            "type": "string",
+            "description": "The concern, concretely: what could go wrong, where."
+          },
+          "blocking": {
+            "type": "boolean",
+            "description": "True when it alone should stop the merge."
+          },
+          "resolution": {
+            "type": "string",
+            "description": "For a non-blocking concern, why it is acceptable as it stands (with what you checked); for a blocking one, what would have to change."
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "verdict",
+    "clear_cut",
+    "confidence",
+    "behaviour_change",
+    "risks",
+    "reasons",
+    "concerns"
+  ]
+}

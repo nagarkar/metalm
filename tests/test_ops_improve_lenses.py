@@ -83,7 +83,7 @@ def test_performance_is_re_measured_by_the_system_not_claimed_by_codex(world, re
     row = execute(world, "performance")
     assert row["outcome"] == outcome
     if resolved:
-        assert "## Finding" in world.bodies[0]
+        assert "## What is wrong" in world.bodies[0]
     else:
         assert row["reason"].startswith("finding not improved")
 
@@ -101,7 +101,7 @@ def test_unconfirmed_claim_closes_without_spending_on_reviewers(world, verdict):
     assert world.verify_count == 1 and world.review_count == 0
     assert not world.commands("gh", "pr", "merge")
     assert world.commands("gh", "pr", "close")
-    assert "auto-improve-rejected" in world.commands("gh", "pr", "edit")[0]
+    assert any("auto-improve-rejected" in edit for edit in world.commands("gh", "pr", "edit"))
     assert world.comments[0].startswith("### auto-improve review: verifier (Claude claude-opus-5-5)")
     assert [call["role"] for call in world.ledger("call")] == ["propose", "verify"]
     world.assert_cleaned()
@@ -166,7 +166,15 @@ def test_pr_has_ordered_evidence_sections_and_pinned_base_link(world):
     base = git(world.repos["alm"], "rev-parse", "origin/main").strip()
     assert execute(world)["outcome"] == "merged"
     body = world.bodies[0]
-    headings = ["## Lens", "## Claim", "## Evidence", "## What", "## Why it is safe", "## Tests", "## Files"]
+    headings = [
+        "## What is wrong",
+        "## Options considered",
+        "## What changed",
+        "## How it was tested",
+        "## Reviewer concerns",
+        "## Where to start",
+        "<details>",
+    ]
     assert [body.index(heading) for heading in headings] == sorted(body.index(heading) for heading in headings)
     assert "## Measurement" not in body
     assert f"https://github.com/example/alm/blob/{base}/src/sample/__init__.py#L1" in body
@@ -387,3 +395,45 @@ def test_the_modularity_lens_allows_a_larger_change():
     lens = lenses.load("modularity")
     assert (lens.max_files, lens.max_changed_lines) == (6, 300) and not lens.may_change_behaviour
     assert lenses.load("performance").needs_measurement is False  # the system re-measures
+
+
+def test_verifier_also_sees_the_finding_file_when_only_a_new_test_changes(world):
+    # 2026-11-27: musiclm and gamelm tests-lens PRs were rejected "uncertain" because the verifier saw only the new test file.
+    def edit(worktree):
+        (worktree / "tests").mkdir(exist_ok=True)
+        (worktree / "tests" / "test_extra.py").write_text("def test_extra():\n    assert True\n")
+
+    world.edit = edit
+    proposed(world)
+    row = execute(world)
+    assert row["outcome"] == "merged", row["reason"]
+    verification = next(prompt for role, prompt, _ in world.prompts if role == "verify")
+    assert "File: tests/test_extra.py\nFile absent at base commit" in verification
+    assert "File: src/sample/__init__.py" in verification and "def add(left, right):" in verification
+
+
+def test_commit_hooks_find_pre_commit_on_the_repo_venv_path(world):
+    # 2026-11-27: publishinglm's hook pointed at a deleted worktree's interpreter and launchd's PATH had no pre-commit.
+    proposed(world)
+    assert execute(world)["outcome"] == "merged"
+    first, second = world.commit_env["PATH"].split(":")[:2]
+    assert first == str(world.repos["alm"] / ".venv" / "bin") and second.endswith("bin")
+
+
+def test_final_description_lists_each_reviewer_concern_with_resolution_and_outcome(world):
+    proposed(world)
+    assert execute(world)["outcome"] == "merged"
+    opened, final = world.bodies[0], world.edited_bodies[-1]
+    assert "Pending." in opened and "Pending." not in final
+    assert "The comment above the arithmetic helper says less than the code does" in final
+    assert "1. **Chosen:** Reword the comment to match the code." in final
+    assert "Not blocking: The wording could drift again. *Resolution:* Acceptable" in final
+    assert "**Outcome:** merged:" in final and "Read src/sample/__init__.py first." in final
+
+
+def test_closed_description_states_why(world):
+    proposed(world)
+    world.verdicts[1] = {**VERDICT, "verdict": "reject", "concerns": [{"concern": "Renames a term.", "blocking": True, "resolution": "Keep the old name."}]}
+    assert execute(world)["outcome"] == "rejected"
+    final = world.edited_bodies[-1]
+    assert "Blocking: Renames a term. *Resolution:* Keep the old name." in final and "**Outcome:** closed:" in final

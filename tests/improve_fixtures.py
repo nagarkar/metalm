@@ -23,6 +23,10 @@ PROPOSAL = {
     "measurement": "",
     "title": "Correct the arithmetic helper comment",
     "summary": "Correct one stale comment.",
+    "problem": "The comment above the arithmetic helper says less than the code does, so a reader learns the wrong contract.",
+    "options": [{"option": "Reword the comment to match the code.", "tradeoff": "Smallest fix; touches no behaviour."}],
+    "chosen": "The only fix that changes no code.",
+    "reading_guide": "Read src/sample/__init__.py first.",
     "why_safe": "Only a comment changes.",
     "tests_run": "The arithmetic test passed.",
 }
@@ -32,6 +36,7 @@ VERDICT = {
     "confidence": 0.95,
     "behaviour_change": False,
     "risks": [],
+    "concerns": [{"concern": "The wording could drift again.", "blocking": False, "resolution": "Acceptable: the comment now states the code exactly."}],
     "reasons": "The comment is accurate and the change is minimal.",
 }
 LABELS = {
@@ -89,6 +94,8 @@ class World:
         self.prompts = []
         self.comments = []
         self.bodies = []
+        self.edited_bodies = []
+        self.commit_env = None
         self.worktrees = []
         self.commit_messages = []
         self.sleeps = []
@@ -348,6 +355,8 @@ class World:
                     git(self.origins[repository_name], "update-ref", "refs/heads/main", f"refs/heads/{self.last_branch}")
                 return self.completed(arguments)
             if action == ["pr", "edit"]:
+                if "--body-file" in arguments:
+                    self.edited_bodies.append(Path(arguments[arguments.index("--body-file") + 1]).read_text())
                 return self.completed(arguments)
             raise AssertionError(f"Unexpected GitHub command: {arguments}")
         if executable == "superlm-notify":
@@ -360,6 +369,7 @@ class World:
             if actual[:1] == ["fetch"] and directory.name in self.crash_fetch:
                 raise RuntimeError("fixture fetch crashed")
             if actual[:1] == ["commit"]:
+                self.commit_env = env
                 if self.commit_fails:
                     return self.completed(arguments, 1, "fixture pre-commit failure")
                 result = git(directory, *actual)

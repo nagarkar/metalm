@@ -44,6 +44,25 @@ THRESHOLDS = {
     "class_lines": 300,
     "renamed_lines": 10,  # consecutive lines that match once names and literals are ignored
 }
+# What each signal measures and why it matters, in plain words: the pull request quotes it so a reader new to the
+# repository knows why this code was picked before reading the fix.
+EXPLAINED = {
+    "churn": "the file changed often in the last two weeks, so a problem in it costs more",
+    "frontend-churn": "the front-end file changed often in the last two weeks, so a problem in it costs more",
+    "size": "the file or function is longer than one reader can hold in mind, which hides bugs and slows every change",
+    "complexity": "the function has many branches or exits (ruff C901/PLR091x), so each change risks a path nobody tested",
+    "coupling": "the module imports, or is imported by, many others (or sits in an import cycle), so a change ripples widely",
+    "class-size": "the class has many methods or lines, a sign it does several jobs that could be separated",
+    "long-params": "the function takes many parameters (ruff PLR0913), often a group of values that belong in one object",
+    "encapsulation": "code reaches into another module's private names or mutates module state through `global`, so the two can't change separately",
+    "duplication": "the same code appears in more than one place, so a fix in one copy is easily missed in the other",
+    "security": "a pattern ruff's security rules (bandit, `S`) flag as a possible vulnerability",
+    "docs": "a public module, class or function has no docstring (ruff D1xx), so its contract is unwritten",
+    "untested": "no test imports this module, so a regression in it would pass the suite",
+    "slow-tests": "a test takes long enough to slow every run of the suite",
+    "perf": "a loop pattern ruff's performance rules (PERF) flag as needlessly slow",
+    "io-in-loop": "a database, network or subprocess call runs once per loop iteration instead of once in all",
+}
 SIGNALS = ("churn", "size", "complexity", "coupling", "duplication", "security", "docs", "untested", "slow-tests")
 LENSES = {
     "churn": ("readability", "backend-robustness", "tests", "documentation", "drift"),

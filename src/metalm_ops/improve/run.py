@@ -412,28 +412,98 @@ def opening(config: Config, run_id: str) -> str:
     )
 
 
-def _body(config: Config, run_id: str, proposal: dict, measured: dict, repository: Repo, base: str, target: dict | None = None, change: str = "") -> str:
+REVIEWS_PENDING = (
+    "Pending. Three Claude reviewers read this change after it opens: a verifier who tries to disprove the claim, "
+    "a senior engineer, and a boundaries reviewer who checks the owner's rules. This section is then rewritten with "
+    "every concern they raised, how each was resolved, and the outcome.\n"
+)
+
+
+def _link(repository: Repo, base: str, path: str, start: int | None = None, end: int | None = None) -> str:
     from urllib.parse import quote
 
+    lines = f"#L{start}-L{end}" if start else ""
+    label = f"{path}:{start}-{end}" if start else path
+    return f"[`{label}`](https://github.com/{repository.github}/blob/{base}/{quote(path, safe='/')}{lines})"
+
+
+def _body(
+    config: Config,
+    run_id: str,
+    proposal: dict,
+    measured: dict,
+    repository: Repo,
+    base: str,
+    target: dict | None = None,
+    change: str = "",
+    reviews: str = REVIEWS_PENDING,
+) -> str:
+    """The PR description, written for a reader who does not know this repository (owner): what is broken, the options
+    weighed, how it was tested, the reviewers' concerns with their resolution, and where to start learning."""
+    metalm = brake.repository(config).github
+    lens = lenses.load(proposal["lens"])
+    tests = [path for path in measured.get("files", []) if PurePosixPath(path).parts[:1] == ("tests",) or PurePosixPath(path).name.startswith("test_")]
+    options = proposal.get("options") or [{"option": proposal["summary"], "tradeoff": proposal["why_safe"]}]
+    picked = ""
+    if target:
+        why = signals.EXPLAINED.get(target["signal"], target["signal"])
+        picked = (
+            f"Picked by a measurement, not by a model: the **{target['signal']}** check found that {why}. "
+            f"Here: {target['detail']} at {_link(repository, base, target['path'], target['start_line'], target['end_line'])}.\n\n"
+        )
     evidence = "\n\n".join(
-        f"[{item['path']}:{item['start_line']}-{item['end_line']}](https://github.com/{repository.github}/blob/{base}/{quote(item['path'], safe='/')}#L{item['start_line']}-L{item['end_line']})\n\n"
-        + "\n".join("> " + line for line in item["quote"].splitlines())
+        _link(repository, base, item["path"], item["start_line"], item["end_line"]) + "\n\n" + "\n".join("> " + line for line in item["quote"].splitlines())
         for item in proposal["evidence"]
     )
-    measurement = f"## Measurement\n\n{proposal['measurement']}\n\n" if lenses.load(proposal["lens"]).needs_measurement else ""
+    measurement = f"- Performance measurement: {proposal['measurement']}\n" if lens.needs_measurement else ""
+    guide = proposal.get("reading_guide", "").strip()
     return (
         opening(config, run_id)
+        + f"**In short:** {proposal['title']}.\n\n"
+        + "## What is wrong\n\n"
+        + picked
+        + (proposal.get("problem") or proposal["claim"]).strip()
+        + "\n\n## Options considered\n\n"
+        + "\n".join(f"{index}. {'**Chosen:** ' if index == 1 else ''}{item['option']} *Trade-off:* {item['tradeoff']}" for index, item in enumerate(options, 1))
+        + (f"\n\nWhy this one: {proposal['chosen']}" if proposal.get("chosen") else "")
+        + f"\n\n## What changed\n\n{proposal['summary']}\n\nWhy it is safe: {proposal['why_safe']}\n\n```text\n{measured['diff_stat']}\n```\n\n"
+        "## How it was tested\n\n"
+        f"- The repository's full test suite (`{measured['test']}`) passed on this branch, and every module still imports.\n"
         + (
-            f"## Finding\n\n{target['signal']}: {target['detail']} ({target['path']}:{target['start_line']}-{target['end_line']}). {change}\n\n"
-            if target
-            else ""
+            f"- Tests added or changed here: {', '.join(f'`{path}`' for path in tests)}.\n"
+            if tests
+            else "- No test file changed (the change touches no executable code, or existing tests cover it).\n"
         )
-        + f"## Lens\n\n{proposal['lens']}\n\n## Claim\n\n{proposal['claim']}\n\n## Evidence\n\n{evidence}\n\n{measurement}"
-        f"## What\n\n{proposal['summary']}\n\nCategory: {proposal['category']}\n\n"
-        f"## Why it is safe\n\n{proposal['why_safe']}\n\n"
-        f"## Tests\n\nCommand: `{measured['test']}`\n\nResult: passed; worktree imports passed.\n\n{proposal['tests_run']}\n\n"
-        f"## Files\n\n```text\n{measured['diff_stat']}\n```\n"
+        + (f"- The measurement was re-run after the change: {change}\n" if change else "")
+        + measurement
+        + f"\n## Reviewer concerns and how they were resolved\n\n{reviews}\n"
+        "## Where to start\n\n"
+        + (guide + "\n\n" if guide else "")
+        + f"- The lens this run worked: **{lens.name}** ([its mission](https://github.com/{metalm}/tree/main/src/metalm_ops/improve/lenses)).\n"
+        f"- How the auto-improve system picks, tests, reviews and merges: [guidelines/auto-improve.md](https://github.com/{metalm}/blob/main/guidelines/auto-improve.md).\n"
+        "- Questions: comment on this PR, or ask in a Claude session in this repository.\n\n"
+        f"<details><summary>The claim and the evidence quoted from the code before the change</summary>\n\n{proposal['claim']}\n\n{evidence}\n\n</details>\n"
     )
+
+
+def _reviews(verification: dict, reviews: list[tuple[str, dict]], outcome: str) -> str:
+    """The reviewers' concerns, each with its resolution, and the outcome, for the PR description."""
+    text = [
+        "Three Claude reviewers read the change. The system does not revise the code after review: a blocking concern, "
+        "or any reviewer who does not approve, closes the PR.\n"
+    ]
+    reasons = (verification.get("reasons") or "").strip()
+    text.append(f"**Verifier** (tries to disprove the claim): {verification['verdict']}. {reasons.split(chr(10) + chr(10))[0]}\n")
+    for title, review in reviews:
+        concerns = review.get("concerns") or [{"concern": risk, "blocking": False, "resolution": "not stated"} for risk in review.get("risks", [])]
+        text.append(f"**{title}**: {review['verdict']} (confidence {review['confidence']:.2f}).")
+        if concerns:
+            text.extend(f"- {'Blocking' if item['blocking'] else 'Not blocking'}: {item['concern']} *Resolution:* {item['resolution']}" for item in concerns)
+        else:
+            text.append("- No concerns raised.")
+        text.append("")
+    text.append(f"**Outcome:** {outcome}\n")
+    return "\n".join(text)
 
 
 def newest_prompt(name: str, folder: str = "prompts") -> Path:
@@ -925,6 +995,9 @@ def _run_repo(
         try:
             # Hooks such as import-linter import the package: point them at the worktree's code, not the checkout's.
             hooks_env = {**os.environ, "PYTHONPATH": str(worktree / "src") + (os.pathsep + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")}
+            # The hook script falls back to `pre-commit` on PATH when its recorded interpreter is gone (publishinglm's
+            # pointed at a deleted worktree, 2026-11-27); launchd's PATH has none, so offer the repo's, then metalm's.
+            hooks_env["PATH"] = os.pathsep.join([str(repository.path / ".venv" / "bin"), str(Path(sys.executable).parent), os.environ.get("PATH", "")])
             _command(["git", "commit", "-m", message], cwd=worktree, directory=directory, env=hooks_env)
         except ImproveError as error:
             raise gates.GateError(f"commit or pre-commit hook failed: {error}") from error
@@ -975,7 +1048,10 @@ def _run_repo(
             verification = {"verdict": "uncertain", "counter_evidence": [], "reasons": reason}
         else:
             base_files = {}
-            for path in measured["files"]:
+            # The changed files alone miss the code under test: a tests-lens PR changes only a new test file, which is
+            # absent at base, so the verifier also gets the finding's file and every file the evidence quotes.
+            paths = dict.fromkeys([*measured["files"], *([target["path"]] if target else []), *(item["path"] for item in proposal["evidence"])])
+            for path in paths:
                 result = process.run(["git", "show", f"{base}:{path}"], cwd=worktree)
                 base_files[path] = result.stdout if result.returncode == 0 else "File absent at base commit"
             template, prompt = _prompt(
@@ -1005,7 +1081,7 @@ def _run_repo(
             f"### auto-improve review: verifier (Claude {settings.review_model})\n\n<!-- auto-improve -->\nVerdict: {verification['verdict']}\n\n{verification['reasons']}\n\nCounter-evidence: {json.dumps(verification['counter_evidence'])}\n"
         )
         _github(repository, "pr", "comment", str(row["pr_number"]), "--body-file", str(comment), directory=directory)
-        reviews = []
+        reviews, titled = [], []
         for name, title in (("senior", "senior engineer"), ("boundaries", "boundaries")) if verification["verdict"] == "confirmed" else ():
             reason = _cap(config, reviews_only=True)
             if reason:
@@ -1016,6 +1092,7 @@ def _run_repo(
                     config, run_id=run_id, repo=repository.name, role=f"review-{name}", worktree=worktree, directory=directory, prompt=prompt, template=template
                 )
             reviews.append(review)
+            titled.append((title[0].upper() + title[1:], review))
             comment = directory / f"review-{name}-comment.md"
             comment.write_text(
                 f"### auto-improve review: {title} (Claude {settings.review_model})\n\n<!-- auto-improve -->\n"
@@ -1037,6 +1114,14 @@ def _run_repo(
                     reason = "CI checks failed: " + next(iter(output.strip().splitlines()), f"exit {result.returncode}")
             except subprocess.TimeoutExpired:
                 reason = "CI checks timed out"
+        outcome = f"closed: {reason}." if reason else "merged: the verifier confirmed the claim, both reviewers approved, and CI passed."
+        final = _body(config, run_id, proposal, measured, repository, base, target, row.get("finding_change", ""), _reviews(verification, titled, outcome))
+        final_file = directory / "pr-body-final.md"
+        final_file.write_text(final)
+        try:
+            _github(repository, "pr", "edit", str(row["pr_number"]), "--body-file", str(final_file), directory=directory)
+        except ImproveError as error:  # a stale description must not block the merge decision
+            row["body_error"] = str(error)[:300]
         if reason:
             _github(repository, "pr", "close", str(row["pr_number"]), "--delete-branch", "--comment", "Closed by auto-improve: " + reason, directory=directory)
             _github(repository, "pr", "edit", str(row["pr_number"]), "--add-label", "auto-improve-rejected", directory=directory)

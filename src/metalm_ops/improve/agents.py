@@ -64,7 +64,7 @@ class UsageLimit(ValueError):
 
 def rejected(reason: str) -> dict:
     """A failed review is a rejection, never a guessed approval."""
-    return {"verdict": "reject", "clear_cut": False, "confidence": 0.0, "behaviour_change": False, "risks": [], "reasons": reason}
+    return {"verdict": "reject", "clear_cut": False, "confidence": 0.0, "behaviour_change": False, "risks": [], "concerns": [], "reasons": reason}
 
 
 def front_matter(template: str) -> dict[str, str]:
@@ -90,7 +90,7 @@ def call(config: Config, *, run_id: str, repo: str, role: str, worktree: Path, d
     # A proposer prompt names its schema and mode; a single-shot prompt runs read-only and makes no edits itself.
     oneshot = proposer and declared.get("mode") == "oneshot"
     default = "proposal.schema.json" if proposer else "verify.schema.json" if role == "verify" else "verdict.schema.json"
-    schema_path = ROOT / "schemas" / (declared.get("output_schema", default) if proposer else default)
+    schema_path = ROOT / "schemas" / declared.get("output_schema", default)
     schema_text = schema_path.read_text()
     answer_path = directory / f"{role}.json"
     directory.mkdir(parents=True, exist_ok=True)

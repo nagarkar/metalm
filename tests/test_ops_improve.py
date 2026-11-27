@@ -428,7 +428,7 @@ def test_exact_codex_and_claude_flags_keep_contexts_isolated(world):
             "",
             "--strict-mcp-config",
             "--max-turns",
-            "3",
+            "6",
         ]
         assert arguments[1:] == expected
     reviews = [prompt for role, prompt, _ in world.prompts if role == "review"]

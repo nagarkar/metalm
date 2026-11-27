@@ -300,3 +300,12 @@ def test_pick_keeps_the_weekly_floor_prefers_the_worthiest_finding_and_lists_emp
     assert lens == "modularity" and pool[0]["signal"] == "complexity" and empty == ["readability"]
     recent = {name: NOW for name in available if name != "documentation"}
     assert signals.pick(report, available, recent, NOW)[0] == "documentation"  # the only overdue lens with a finding
+
+
+def test_clock_reads_in_a_loop_are_not_io(tmp_path):
+    root = plant(tmp_path / "repo")
+    (root / "src" / "pkg" / "wait.py").write_text(
+        '"""Wait."""\nimport time\n\n\ndef wait(done):\n    """Doc."""\n    while not done():\n        if time.monotonic() > 5:\n            break\n        time.sleep(1)\n'
+    )
+    loops = {item["symbol"] for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["signal"] == "io-in-loop"}
+    assert loops == {"wait:time.sleep"}

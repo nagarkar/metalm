@@ -541,6 +541,10 @@ def _target_text(worktree: Path, paths: list[str], target: dict | None = None) -
 def _format(repository: Repo, worktree: Path, paths: list[str]) -> None:
     """Format the edited Python files with the repo's own ruff and config, as its ruff-format hook would;
     a single-shot answer cannot run the formatter itself, and a reformat at commit time aborts the commit."""
+    hooks = repository.path / ".pre-commit-config.yaml"
+    # Only a repo that enforces ruff-format is formatted: elsewhere it would rewrap code the fix never touched.
+    if not hooks.is_file() or "ruff-format" not in hooks.read_text():
+        return
     ruff = repository.path / ".venv" / "bin" / "ruff"
     files = sorted({path for path in paths if path.endswith(".py") and (worktree / path).is_file()})
     if ruff.is_file() and files:

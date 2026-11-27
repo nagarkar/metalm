@@ -585,6 +585,16 @@ IO_CALLS = {
     "urlopen",
     "connect",
 }  # per-item work one batched call usually replaces; reading a list of files one by one is not flagged
+NOT_IO = {
+    "time.monotonic",
+    "time.time",
+    "time.perf_counter",
+    "time.monotonic_ns",
+    "time.time_ns",
+    "time.strftime",
+    "time.gmtime",
+    "time.localtime",
+}  # clock reads are cheap
 IO_MODULES = {"subprocess", "requests", "httpx", "urllib", "sqlite3", "time"}  # subprocess.run, requests.get, time.sleep ...
 
 
@@ -620,7 +630,7 @@ def performance(sources: list[str], parsed: dict) -> list[dict]:
                 continue
             for call in _loop_calls(loop):
                 name = _call_name(call)
-                if name in IO_CALLS or name.split(".")[0] in IO_MODULES:
+                if name in IO_CALLS or (name.split(".")[0] in IO_MODULES and name not in NOT_IO):
                     where = _enclosing(tree, loop.lineno)
                     found.append(
                         finding(

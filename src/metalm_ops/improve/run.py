@@ -503,10 +503,25 @@ def recent_targets(config: Config, repo: str, now: datetime) -> set[str]:
     return avoid
 
 
-def _target_text(worktree: Path, paths: list[str], target: dict | None = None) -> str:
+def _changed_code(worktree: Path, diff: str) -> str:
+    """The changed files after the change, as windows around each hunk, so reviewers can check the code a diff touches."""
+    focus: dict[str, list[tuple[int, int]]] = {}
+    path = ""
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            path = line[6:] if line.startswith("+++ b/") else ""
+        elif line.startswith("@@") and path:
+            found = re.search(r"\+(\d+)(?:,(\d+))?", line)
+            if found:
+                start, count = int(found.group(1)), int(found.group(2) or 1)
+                focus.setdefault(path, []).append((max(1, start), max(start, start + count - 1)))
+    return _target_text(worktree, list(focus), None, focus)
+
+
+def _target_text(worktree: Path, paths: list[str], target: dict | None = None, extra: dict | None = None) -> str:
     """Target files with line numbers: short files whole; long files as windows around the finding and,
     for duplication, around the other copy (which may be in the same file); other long files' heads."""
-    focus: dict[str, list[tuple[int, int]]] = {}
+    focus: dict[str, list[tuple[int, int]]] = {key: list(value) for key, value in (extra or {}).items()}
     if target:
         focus.setdefault(target["path"], []).append((target["start_line"], max(target["end_line"], target["start_line"])))
         other = target.get("other")
@@ -536,6 +551,53 @@ def _target_text(worktree: Path, paths: list[str], target: dict | None = None) -
         body = "\n...\n".join("\n".join(f"{number}: {lines[number - 1]}" for number in range(first, last + 1)) for first, last in spans)
         blocks.append(f'<file path="{path}"{note}>\n{body}\n</file>')
     return "\n".join(blocks)
+
+
+REPAIR_TAIL = 4000  # characters of the failing test output shown to the repair round
+
+
+def _syntax_errors(repository: Repo, worktree: Path, paths: list[str]) -> str:
+    """The first Python syntax error in the edited files (compiled in-process); empty when none."""
+    for path in sorted({path for path in paths if path.endswith(".py") and (worktree / path).is_file()}):
+        try:
+            compile((worktree / path).read_text(), path, "exec")
+        except (SyntaxError, ValueError) as error:
+            return f"{path}: {error}"[:800]
+    return ""
+
+
+def _test_tail(directory: Path) -> str:
+    try:
+        text = (directory / "tests.log").read_text()
+    except OSError:
+        return "the test command failed; no output was kept"
+    return text[-REPAIR_TAIL:]
+
+
+def _reset(worktree: Path, directory: Path) -> None:
+    """Back to the base commit before the repair round; ignored links (.venv, node_modules, .env) stay."""
+    _command(["git", "reset", "-q"], cwd=worktree, directory=directory)
+    _command(["git", "checkout", "-q", "--", "."], cwd=worktree, directory=directory)
+    _command(["git", "clean", "-fdq"], cwd=worktree, directory=directory)
+
+
+def _repair_prompt(first: str, proposal: dict, failure: str) -> str:
+    return (
+        first
+        + "\n\n<previous-attempt>\nYour previous answer's edits were applied to the original code above and failed:\n"
+        + json.dumps(proposal.get("edits", []), indent=1)[:6000]
+        + "\n<failure>\n"
+        + failure
+        + "\n</failure>\nThe repository has been reset to the original code shown above. Answer again with corrected edits against that "
+        "original code, under the same rules. If you cannot make it pass, answer skip: true.\n</previous-attempt>"
+    )
+
+
+def _regenerate_docs(repository: Repo, worktree: Path) -> None:
+    """Refresh generated docs the way the repo's commit hook would, so a docs-freshness test sees the change's docs."""
+    tool = repository.path / ".venv" / "bin" / "metalm-gendocs"
+    if tool.is_file():
+        process.run([str(tool)], cwd=worktree, env={**os.environ, "PYTHONPATH": str(worktree / "src")})
 
 
 def _format(repository: Repo, worktree: Path, paths: list[str]) -> None:
@@ -747,49 +809,73 @@ def _run_repo(
                 "test_files_command": _test_files_command(repository, [path for path in target_paths if signals.is_test(path)]),
             },
         )
-        row["codex_calls"] += 1
-        proposal = agents.call(
-            config, run_id=run_id, repo=repository.name, role="propose", worktree=worktree, directory=directory, prompt=prompt, template=template
-        )
-        row.update(tokens(directory / "propose.jsonl"))
-        if proposal["skip"]:
-            if proposal.get("limit"):
-                _record_limit(config, proposal["skip_reason"])
-            if proposal.get("failed"):
-                # A proposer that could not run is a failure, never "found nothing": it must not mark the lens done or hide from the brake.
-                row.update(outcome="failed", reason=proposal["skip_reason"])
-            else:
-                row.update(outcome="skipped", reason=lenses.PROPOSER_SKIP + proposal["skip_reason"])
-            return row
-        if proposal["lens"] != chosen or proposal["category"] != chosen:
-            raise gates.GateError(f"proposal must use selected lens {chosen}")
-        if "edits" in proposal:
-            apply_edits(worktree, proposal["edits"])
-            _format(repository, worktree, [item["path"] for item in proposal["edits"]])
-        row.update(title=proposal["title"])
-        quote_error = gates.check_evidence(worktree, proposal["evidence"], base)
-        if quote_error:
-            raise gates.GateError(quote_error)
-        if mission.needs_measurement and not proposal["measurement"].strip():
-            raise gates.GateError("performance lens needs a before/after measurement")
-        if chosen == "tests":
-            paths = gates.inspect(settings, selected, worktree)["files"]
-            if any(
-                not (
-                    "tests" in Path(path).parts
-                    or Path(path).name.startswith("test_")
-                    or Path(path).name.endswith(("_test.py", ".test.js", ".test.ts", ".spec.ts", ".spec.js"))
-                )
-                for path in paths
-            ):
-                raise gates.GateError("tests lens may change tests only")
-        if _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip() != base:
-            raise gates.GateError("proposer created a commit; only Python may commit")
-        silenced = _silences(worktree, directory)
-        if silenced:
-            raise gates.GateError(f"proposal silences a check instead of fixing it: {silenced}")
-        _link_env(repository, worktree)
-        measured = gates.check(settings, selected, repository, worktree, directory)
+        first_prompt, repaired, failure = prompt, False, ""
+        while True:
+            row["codex_calls"] += 1
+            proposal = agents.call(
+                config, run_id=run_id, repo=repository.name, role="propose", worktree=worktree, directory=directory, prompt=prompt, template=template
+            )
+            used = tokens(directory / "propose.jsonl")
+            for key, value in used.items():
+                row[key] = (row.get(key) or 0) + (value or 0) if value is not None else row.get(key)
+            if proposal["skip"] and repaired:
+                raise gates.GateError(f"repair declined after: {failure[:200]}")
+            if proposal["skip"]:
+                if proposal.get("limit"):
+                    _record_limit(config, proposal["skip_reason"])
+                if proposal.get("failed"):
+                    # A proposer that could not run is a failure, never "found nothing": it must not mark the lens done or hide from the brake.
+                    row.update(outcome="failed", reason=proposal["skip_reason"])
+                else:
+                    row.update(outcome="skipped", reason=lenses.PROPOSER_SKIP + proposal["skip_reason"])
+                return row
+            if proposal["lens"] != chosen or proposal["category"] != chosen:
+                raise gates.GateError(f"proposal must use selected lens {chosen}")
+            if "edits" in proposal:
+                apply_edits(worktree, proposal["edits"])
+                edited = [item["path"] for item in proposal["edits"]]
+                _format(repository, worktree, edited)
+                _regenerate_docs(repository, worktree)
+            row.update(title=proposal["title"])
+            quote_error = gates.check_evidence(worktree, proposal["evidence"], base)
+            if quote_error:
+                raise gates.GateError(quote_error)
+            if mission.needs_measurement and not proposal["measurement"].strip():
+                raise gates.GateError("performance lens needs a before/after measurement")
+            if chosen == "tests":
+                paths = gates.inspect(settings, selected, worktree)["files"]
+                if any(
+                    not (
+                        "tests" in Path(path).parts
+                        or Path(path).name.startswith("test_")
+                        or Path(path).name.endswith(("_test.py", ".test.js", ".test.ts", ".spec.ts", ".spec.js"))
+                    )
+                    for path in paths
+                ):
+                    raise gates.GateError("tests lens may change tests only")
+            if _command(["git", "rev-parse", "HEAD"], cwd=worktree, directory=directory).strip() != base:
+                raise gates.GateError("proposer created a commit; only Python may commit")
+            silenced = _silences(worktree, directory)
+            if silenced:
+                raise gates.GateError(f"proposal silences a check instead of fixing it: {silenced}")
+            _link_env(repository, worktree)
+            try:
+                broken = _syntax_errors(repository, worktree, edited) if "edits" in proposal else ""
+                if broken:
+                    raise gates.GateError(f"syntax error after the edits: {broken}")
+                measured = gates.check(settings, selected, repository, worktree, directory)
+                break
+            except gates.GateError as error:
+                # One repair round for code that does not compile or breaks tests: the error goes back to Codex once.
+                repairable = str(error).startswith(("syntax error after the edits", "test command failed"))
+                if repaired or not repairable or "edits" not in proposal:
+                    raise
+                failure = str(error) if str(error).startswith("syntax") else _test_tail(directory)
+                repaired = True
+                row["repaired"] = True
+                _reset(worktree, directory)
+                (directory / "propose.first.json").write_text(json.dumps(proposal, indent=2))
+                prompt = _repair_prompt(first_prompt, proposal, failure)
         _keep_junit(config, repository.name, directory)
         after = signals.measure(worktree, ruff_bin=RUFF_BIN, excludes=excludes, thresholds=selected.thresholds, junit=directory / "junit.xml", now=started)
         better, change = signals.improved(target, after)
@@ -847,7 +933,13 @@ def _run_repo(
             raise ImproveError("gh pr create returned no PR URL")
         row.update(pr_number=int(urls[-1]), pr_url=re.findall(r"https://[^\s]+/pull/\d+", output)[-1])
         diff = _github(repository, "pr", "diff", str(row["pr_number"]), directory=directory)
-        review_values = {**common, "pr_body": body, "diff": diff, "guidelines": index_md + "\n" + auto_improve_md}
+        review_values = {
+            **common,
+            "pr_body": body,
+            "diff": diff,
+            "guidelines": index_md + "\n" + auto_improve_md,
+            "changed_code": _changed_code(worktree, diff),
+        }
         reason = _cap(config, reviews_only=True)
         if reason:
             verification = {"verdict": "uncertain", "counter_evidence": [], "reasons": reason}

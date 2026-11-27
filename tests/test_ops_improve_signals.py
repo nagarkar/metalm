@@ -308,4 +308,4 @@ def test_clock_reads_in_a_loop_are_not_io(tmp_path):
         '"""Wait."""\nimport time\n\n\ndef wait(done):\n    """Doc."""\n    while not done():\n        if time.monotonic() > 5:\n            break\n        time.sleep(1)\n'
     )
     loops = {item["symbol"] for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["signal"] == "io-in-loop"}
-    assert loops == {"wait:time.sleep"}
+    assert loops == set()  # sleeping in a loop is a deliberate wait or rate limit, not per-item work

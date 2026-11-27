@@ -102,7 +102,8 @@ class World:
         self.verify_envelope = None
         self.review_cost = 0.1
         self.proposal_error = None
-        self.proposal_exit = None  # (code, jsonl output) to simulate codex exiting non-zero
+        self.proposal_exit = None
+        self.queue: list = []  # successive proposer answers (e.g. a broken first answer, then its repair)  # (code, jsonl output) to simulate codex exiting non-zero
         self.review_error = None
         self.review_envelope = None
         self.open_pulls = []
@@ -261,7 +262,7 @@ class World:
                 raise self.proposal_error
             if self.proposal_exit:
                 return self.completed(arguments, code=self.proposal_exit[0], output=self.proposal_exit[1])
-            proposal = self.proposal
+            proposal = self.queue.pop(0) if self.queue else self.proposal
             if "read-only" in arguments and isinstance(proposal, dict) and not proposal.get("skip") and "edits" not in proposal:
                 # A single-shot Codex edits nothing itself: turn the fixture's edit into exact search/replace edits.
                 proposal = {**proposal, "edits": self.as_edits(worktree)}

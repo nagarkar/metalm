@@ -272,6 +272,8 @@ def test_prompts_inventory_and_json(capsys):
         "propose_v3.md",
         "propose_v4.md",
         "propose_v5.md",
+        "review_boundaries_v3.md",
+        "review_senior_v3.md",
         "review_senior_v1.md",
         "review_senior_v2.md",
         "review_boundaries_v1.md",

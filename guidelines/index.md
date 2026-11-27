@@ -71,7 +71,7 @@ Scope: every repo whose `CLAUDE.md` imports this file. These rules beat skill de
 - Terse. Lead with the action; report outcomes, not effort. Plain words, not pipeline jargon. No pasted JSON or old/new text in chat. Summaries 3–5 bullets; no long walkthroughs unless asked. Report in prose per unit (staged, written, left out, skipped). After tool output, state the next action it implies; do not stop at status.
 - Mark owner decisions `(owner)` where they are written down; no date.
 - **Links:** whenever you ask the owner to open, try, fill in, check or review anything in a web app, Doc, page or PR (a review, a setup step, "try it", "look at this"), put the full link in that same message, to the exact page and not only the app's root, and say what to do there. Check it is live first (`operations.md#handing-out-links`). Never write "the page", "the app" or "Settings" without its link. A phone review page is phone-ready. (owner)
-- Surface warnings, conflicts and open questions unprompted.
+- Surface warnings, conflicts and open questions unprompted. Prose for any reader avoids the AI writing patterns (`design.md#prose-for-readers`). (owner)
 
 ## Memory
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
-NAMES = ("readability", "documentation", "duplication", "tests", "backend-robustness", "frontend-robustness", "ui", "performance", "drift")
+NAMES = ("readability", "modularity", "documentation", "duplication", "tests", "backend-robustness", "frontend-robustness", "ui", "performance", "drift")
 OLD_NAMES = {"refactor": "readability", "docs": "documentation", "duplicate": "duplication"}
 
 
@@ -15,6 +15,8 @@ class Lens:
     mission: str
     may_change_behaviour: bool
     needs_measurement: bool
+    max_files: int | None = None  # a lens may allow a larger change than [improve] max_files (modularity)
+    max_changed_lines: int | None = None
 
 
 def metadata(text: str) -> dict:
@@ -43,7 +45,8 @@ def load(name: str) -> Lens:
     for key in ("may_change_behaviour", "needs_measurement"):
         if header.get(key) not in ("true", "false"):
             raise ValueError(f"{name}: invalid {key}")
-    return Lens(name, text.split("---", 2)[2].strip(), header["may_change_behaviour"] == "true", header["needs_measurement"] == "true")
+    limits = {key: int(header[key]) for key in ("max_files", "max_changed_lines") if key in header}
+    return Lens(name, text.split("---", 2)[2].strip(), header["may_change_behaviour"] == "true", header["needs_measurement"] == "true", **limits)
 
 
 def applicable(selected, tracked: list[str]) -> tuple[str, ...]:
@@ -60,10 +63,11 @@ PROPOSER_SKIP = "proposer found nothing: "  # a lens the proposer searched count
 
 
 def completed(rows: list[dict]) -> dict[str, datetime]:
-    """Latest non-skipped completion for each lens, including historical categories."""
+    """Latest completion for each lens, including historical categories. A run that never reached the
+    proposer's judgement (a failure, a cap or limit skip) does not count: the lens was not looked at."""
     result = {}
     for row in rows:
-        if row["outcome"] == "skipped" and not row.get("reason", "").startswith(PROPOSER_SKIP):
+        if row["outcome"] == "failed" or (row["outcome"] == "skipped" and not row.get("reason", "").startswith(PROPOSER_SKIP)):
             continue
         name = row.get("lens") or row.get("category")
         name = OLD_NAMES.get(name, name)

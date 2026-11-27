@@ -176,15 +176,15 @@ def test_overdue_repos_precede_heavier_activity_and_caps_record_remaining(tmp_pa
     assert len(world.prompts) == 1
 
 
-def test_quiet_repo_rotates_all_seven_applicable_lenses_in_week(world, monkeypatch):
+def test_quiet_repo_rotates_all_eight_applicable_lenses_in_week(world, monkeypatch):
     monkeypatch.setattr(cadence, "activity", lambda *args, **kwargs: {})
-    expected = ["readability", "documentation", "duplication", "tests", "backend-robustness", "performance", "drift"]
-    for day, lens in enumerate(expected):
-        when = NOW + timedelta(days=day)
+    expected = ["readability", "modularity", "documentation", "duplication", "tests", "backend-robustness", "performance", "drift"]
+    for step, lens in enumerate(expected):
+        when = NOW + timedelta(hours=20 * step)
         plan = cadence.plan(world.config, world.config.improve.repos[0], world.config.repos[0], when, fetch=False)
         assert plan["due"] and plan["lens"] == lens
         complete(world, lens, when)
-    plan = cadence.plan(world.config, world.config.improve.repos[0], world.config.repos[0], NOW + timedelta(days=6, hours=1), fetch=False)
+    plan = cadence.plan(world.config, world.config.improve.repos[0], world.config.repos[0], NOW + timedelta(hours=20 * 7 + 1), fetch=False)
     assert not plan["due"] and not plan["overdue"]
 
 

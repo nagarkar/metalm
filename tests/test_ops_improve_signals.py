@@ -221,3 +221,91 @@ def test_password_rules_skip_values_that_are_setting_names(tmp_path):
     (root / "src" / "pkg" / "names.py").write_text('"""Names."""\nTOKEN_VAR = "PLANNER_TOKEN"\nPASSWORD = "hunter22!"\n')
     found = [item for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["path"] == "src/pkg/names.py" and item["signal"] == "security"]
     assert [item["start_line"] for item in found] == [3]
+
+
+def test_encapsulation_finds_private_reach_ins_and_global_state(tmp_path):
+    root = plant(tmp_path / "repo")
+    package = root / "src" / "pkg"
+    (package / "owner.py").write_text('"""Owner."""\n_cache = {}\n\n\ndef _secret():\n    """Doc."""\n    return 1\n')
+    (package / "user.py").write_text(
+        '"""User."""\nfrom pkg import owner\nfrom pkg.owner import _secret\n\nCOUNT = 0\n\n\ndef use():\n    """Doc."""\n    global COUNT\n    COUNT += 1\n    return owner._cache, _secret()\n'
+    )
+    found = {item["fingerprint"] for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["signal"] == "encapsulation"}
+    assert found == {
+        "encapsulation:src/pkg/user.py:private:pkg.owner._secret",
+        "encapsulation:src/pkg/user.py:private:pkg.owner._cache",
+        "encapsulation:src/pkg/user.py:global:use",
+    }
+
+
+def test_big_classes_long_parameter_lists_and_queries_in_loops(tmp_path):
+    root = plant(tmp_path / "repo")
+    package = root / "src" / "pkg"
+    methods = "".join(f'\n    def m{n}(self):\n        """Doc."""\n        return {n}\n' for n in range(22))
+    (package / "big.py").write_text(f'"""Big."""\n\n\nclass Big:\n    """Doc."""\n{methods}')
+    (package / "params.py").write_text('"""Params."""\n\n\ndef many(a, b, c, d, e, f, g):\n    """Doc."""\n    return a\n')
+    (package / "store.py").write_text(
+        '"""Store."""\nimport subprocess\n\n\ndef names(db, ids, paths):\n    """Doc."""\n    rows = [db.execute("select 1 where id = ?", (i,)).fetchone() for i in ids]\n'
+        '    for i in ids:\n        rows.append(db.execute("select 2", (i,)))\n    for path in paths:\n        rows.append(path.read_text())\n        subprocess.run(["true"], check=True)\n    return rows\n'
+    )
+    measured = signals.measure(root, ruff_bin=RUFF, now=NOW)
+    assert any(item["fingerprint"] == "class-size:src/pkg/big.py:methods:Big" for item in measured["findings"])
+    assert any(item["signal"] == "long-params" and item["path"] == "src/pkg/params.py" for item in measured["findings"])
+    loops = {item["symbol"] for item in measured["findings"] if item["signal"] == "io-in-loop"}
+    assert loops == {"names:execute", "names:subprocess.run"}  # reading files one by one is not flagged
+
+
+def test_renamed_copies_are_found(tmp_path):
+    root = plant(tmp_path / "repo")
+    body = "\n".join(
+        [
+            "    {r} = []",
+            "    for {i} in {items}:",
+            "        if {i}.startswith('x'):",
+            "            {r}.append({i}.upper())",
+            "        elif {i}.endswith('y'):",
+            "            {r}.append({i}.lower() + 'z')",
+            "        else:",
+            "            {r}.append(len({i}) * 2)",
+            "    {total} = sum(len(v) for v in {r} if v)",
+            "    if {total} > 10:",
+            "        {r}.sort(key=lambda v: (len(v), v))",
+            "    return {r}, {total}",
+        ]
+    )
+    (root / "src" / "pkg" / "left.py").write_text(
+        '"""L."""\n\n\ndef left(items):\n    """Doc."""\n' + body.format(r="out", i="item", items="items", total="size") + "\n"
+    )
+    (root / "src" / "pkg" / "right.py").write_text(
+        '"""R."""\n\n\ndef right(words):\n    """Doc."""\n' + body.format(r="acc", i="word", items="words", total="n") + "\n"
+    )
+    found = [item for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["metric"] == "renamed copy lines"]
+    assert any({item["path"], item["other"]["path"]} == {"src/pkg/left.py", "src/pkg/right.py"} for item in found)
+
+
+def test_pick_keeps_the_weekly_floor_prefers_the_worthiest_finding_and_lists_empty_lenses():
+    def item(signal, value, threshold, path="a.py"):
+        return {
+            "signal": signal,
+            "lenses": list(signals.LENSES[signal]),
+            "path": path,
+            "value": value,
+            "threshold": threshold,
+            "fingerprint": f"{signal}:{path}",
+        }
+
+    report = {"findings": [item("docs", 1, 0), item("complexity", 30, 10), item("security", 1, 0, "b.py")], "churned": []}
+    available = ("readability", "modularity", "documentation", "backend-robustness")
+    lens, pool, empty = signals.pick(report, available, {}, NOW)
+    assert lens == "modularity" and pool[0]["signal"] == "complexity" and empty == ["readability"]
+    recent = {name: NOW for name in available if name != "documentation"}
+    assert signals.pick(report, available, recent, NOW)[0] == "documentation"  # the only overdue lens with a finding
+
+
+def test_clock_reads_in_a_loop_are_not_io(tmp_path):
+    root = plant(tmp_path / "repo")
+    (root / "src" / "pkg" / "wait.py").write_text(
+        '"""Wait."""\nimport time\n\n\ndef wait(done):\n    """Doc."""\n    while not done():\n        if time.monotonic() > 5:\n            break\n        time.sleep(1)\n'
+    )
+    loops = {item["symbol"] for item in signals.measure(root, ruff_bin=RUFF, now=NOW)["findings"] if item["signal"] == "io-in-loop"}
+    assert loops == {"wait:time.sleep"}

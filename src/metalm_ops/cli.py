@@ -92,6 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
             leaf.add_argument("--dry-run", action="store_true", help="preview the brake removal PR")
         if (group, verb) == ("improve", "signals"):
             leaf.add_argument("--timings", action="store_true", help="first run each suite once to record per-test timings (slow; no model)")
+        if (group, verb) == ("improve", "status"):
+            leaf.add_argument("--wait-merge", type=int, metavar="MINUTES", help="block up to MINUTES until a new merge lands, then print it")
+            leaf.add_argument("--since", help="with --wait-merge: report merges finished after this time (default: the newest merge so far)")
         if (group, verb) == ("improve", "labels"):
             leaf.add_argument("--dry-run", action="store_true", help="preview label definitions without changing GitHub")
         if (group, verb) == ("improve", "run"):
@@ -177,9 +180,13 @@ def dispatch(args, parser: argparse.ArgumentParser) -> int:
             from metalm_ops.improve import brake
 
             board = brake.unbrake(cfg, repo=args.repo, why=args.why, dry_run=args.dry_run)
+        elif args.wait_merge:
+            board = improve.wait_merge(cfg, minutes=args.wait_merge, since=args.since, repo=args.repo)
         else:
             board = improve.status(cfg, repo=args.repo)
-        lines = []
+        lines = [" ".join(str(row.get(key) or "") for key in ("finished", "repo", "lens", "pr_url", "title", "finding")) for row in board.get("merged", [])]
+        if "reason" in board and "merged" in board:
+            lines.append(board["reason"])
         for repository in board.get("repos", []):
             if "findings" in repository:
                 counts = ", ".join(f"{name}={count}" for name, count in repository["counts"].items())

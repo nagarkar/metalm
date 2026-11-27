@@ -349,6 +349,36 @@ def status(config: Config, *, repo: str | None = None, now: datetime | None = No
     return board
 
 
+def wait_merge(config: Config, *, minutes: int, since: str | None = None, repo: str | None = None) -> dict:
+    """Block until the ledger records a merge finished after `since`, polling once a minute.
+
+    `since` defaults to the newest merge already recorded, so only new merges wake the caller; the
+    board's `next` carries the cursor, so a caller that re-runs it never misses a merge in between.
+    """
+
+    def merged() -> list[dict]:
+        rows = [row for row in store.read_runs(config, repo, limit=1000000) if row["outcome"] == "merged"]
+        return sorted(rows, key=lambda row: row["finished"] or "")
+
+    if since is None:
+        existing = merged()
+        since = existing[-1]["finished"] if existing else ""
+    for attempt in range(max(minutes, 1)):
+        fresh = [row for row in merged() if (row["finished"] or "") > since]
+        if fresh:
+            cursor = fresh[-1]["finished"]
+            return {"merged": fresh, "since": cursor, "ok": True, "next": f"metalm-ops improve status --wait-merge {minutes} --since {cursor}"}
+        if attempt < minutes - 1:
+            SLEEP(60)
+    return {
+        "merged": [],
+        "since": since,
+        "ok": True,
+        "reason": f"no merge in {minutes} min",
+        "next": f"metalm-ops improve status --wait-merge {minutes} --since {since}",
+    }
+
+
 def unbrake(config: Config, *, repo: str, why: str, dry_run: bool = False) -> dict:
     """Open a resume PR quoting the owner's words; never merge it."""
     return brake.unbrake(config, repo, why, dry_run=dry_run)

@@ -124,8 +124,7 @@ def test_a_broken_tool_is_reported_and_the_other_signals_still_run(tmp_path):
 def test_candidates_prefer_measured_findings_in_recently_changed_files(report):
     first = signals.candidates(report[1], "backend-robustness", seed="s")[0]
     assert first["signal"] == "security" and first["path"] == "src/pkg/unsafe.py"
-    drift = signals.candidates(report[1], "drift", seed="s")
-    assert [item["signal"] for item in drift] == ["churn"]
+    assert signals.candidates(report[1], "drift", seed="s") == []  # churn alone is never a target
 
 
 def test_candidates_skip_avoided_fingerprints_and_rotate_by_seed(report):

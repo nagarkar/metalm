@@ -91,6 +91,7 @@ STEP_OF = {
     "class-size": "design",
     "encapsulation": "design",
 }
+UNTARGETED = {"churn", "frontend-churn"}
 SLOW_TEST_GAIN = 0.8  # a slow test must get at least 20% faster; smaller differences are timing noise
 # PLR0913 feeds the modularity lens (group a travelling parameter set); PERF101/102/203 are static performance smells.
 RUFF_SELECT = "C901,PLR0911,PLR0912,PLR0913,PLR0915,PERF101,PERF102,PERF203,S,D100,D101,D103,D104"
@@ -908,7 +909,9 @@ def _shuffle(seed: str, fingerprint: str) -> str:
 def candidates(report: dict, lens: str, *, avoid: set[str] = frozenset(), seed: str = "") -> list[dict]:
     """Findings for a lens: recently changed files first, then furthest over threshold, then a seeded shuffle."""
     churned = set(report.get("churned", []))
-    pool = [item for item in report["findings"] if lens in item["lenses"] and item["fingerprint"] not in avoid]
+    # "This file changed a lot" is not a defect: churn only ranks measured findings, it is never sent to Codex on its own
+    # (2026-11-26: seven churn-only readability runs all ended "churn does not establish a problem").
+    pool = [item for item in report["findings"] if lens in item["lenses"] and item["fingerprint"] not in avoid and item["signal"] not in UNTARGETED]
 
     def excess(item: dict) -> float:
         return item["value"] / item["threshold"] if item["threshold"] else float(item["value"])
